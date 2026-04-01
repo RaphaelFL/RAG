@@ -1,22 +1,28 @@
 import { expect, test } from '@playwright/test';
 
 const storageKey = 'rag-console-environment';
+type SeedEnvironmentValue = {
+  apiBaseUrl: string;
+  tenantId: string;
+  userId: string;
+  userRole: string;
+};
 
 async function seedEnvironment(page: import('@playwright/test').Page, overrides?: Record<string, string>) {
   await page.addInitScript(
-    ([key, value]) => {
-      window.sessionStorage.setItem(key, JSON.stringify(value));
+    (payload: { key: string; value: SeedEnvironmentValue & Record<string, string> }) => {
+      globalThis.sessionStorage.setItem(payload.key, JSON.stringify(payload.value));
     },
-    [
-      storageKey,
-      {
+    {
+      key: storageKey,
+      value: {
         apiBaseUrl: 'http://localhost:5000',
         tenantId: '11111111-1111-1111-1111-111111111111',
         userId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
         userRole: 'TenantAdmin',
         ...overrides
       }
-    ]
+    }
   );
 }
 

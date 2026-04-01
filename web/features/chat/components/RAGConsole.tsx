@@ -1,7 +1,6 @@
 'use client';
 
-import React from 'react';
-import { useDeferredValue, useState } from 'react';
+import * as React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
@@ -16,6 +15,7 @@ import type { UserRole } from '@/types/app';
 const USER_ROLES: UserRole[] = ['TenantUser', 'Analyst', 'TenantAdmin', 'PlatformAdmin', 'McpClient'];
 
 export function RAGConsole() {
+  const { useDeferredValue, useState } = React;
   const { environment, isReady, setEnvironment } = useRuntimeEnvironment();
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
   const [message, setMessage] = useState('');
@@ -366,6 +366,7 @@ function UploadPanel({
   canFullReindex: boolean;
   userRole: UserRole;
 }>) {
+  const { useState } = React;
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');

@@ -1,6 +1,7 @@
 'use client';
 
 import { startTransition, useMemo, useRef, useState } from 'react';
+import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { ApiError } from '@/lib/http';
 import { getChatSession, sendChatMessage, streamChatMessage } from '@/features/chat/api/chatApi';
 import type { RuntimeEnvironment } from '@/types/app';
@@ -9,6 +10,9 @@ import type {
   ChatMessageModel,
   ChatRequest,
   ChatSessionSnapshot,
+  Citation,
+  StreamErrorEvent,
+  StreamStartedEvent,
   UsageMetadata
 } from '@/features/chat/types/chat';
 
@@ -16,6 +20,9 @@ type UseChatArgs = {
   environment: RuntimeEnvironment;
   sessionId: string;
 };
+
+type MessageSetter = Dispatch<SetStateAction<ChatMessageModel[]>>;
+type NullableStringRef = RefObject<string | null>;
 
 export function useChat({ environment, sessionId }: UseChatArgs) {
   const [messages, setMessages] = useState<ChatMessageModel[]>([]);
@@ -123,75 +130,24 @@ export function useChat({ environment, sessionId }: UseChatArgs) {
     const assistantId = crypto.randomUUID();
     streamingMessageIdRef.current = assistantId;
     setIsStreaming(true);
-
-    setMessages((current) => [
-      ...current,
-      {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        citations: [],
-        createdAtUtc: new Date().toISOString(),
-        isStreaming: true
-      }
-    ]);
+    appendStreamingPlaceholder(setMessages, assistantId);
 
     try {
-      function updateStreamingMessage(updater: (message: ChatMessageModel) => ChatMessageModel) {
-        const activeId = streamingMessageIdRef.current ?? assistantId;
-        setMessages((current) => mapMessages(current, (message) => message.id === activeId || Boolean(message.isStreaming), updater));
-      }
-
-      await streamChatMessage(environment, request, controller.signal, {
-        onStarted: (event) => {
-          const previousId = streamingMessageIdRef.current ?? assistantId;
-          streamingMessageIdRef.current = event.answerId;
-          setMessages((current) =>
-            mapMessages(current, (message) => message.id === previousId, (message) => ({
-              ...message,
-              id: event.answerId
-            }))
-          );
-        },
-        onDelta: (event) => {
-          updateStreamingMessage((message) => ({
-            ...message,
-            content: `${message.content}${event.text}`
-          }));
-        },
-        onCitation: (citation) => {
-          updateStreamingMessage((message) => ({
-            ...message,
-            citations: [...message.citations, citation]
-          }));
-        },
-        onCompleted: ({ usage }) => {
-          updateStreamingMessage((message) => ({
-            ...message,
-            usage,
-            isStreaming: false
-          }));
-          setLastUsage(usage);
-        },
-        onError: (streamError) => {
-          setError(streamError.message);
-          updateStreamingMessage((message) => ({
-            ...message,
-            content: message.content || 'Falha ao gerar resposta em streaming.',
-            isStreaming: false
-          }));
-        }
+      const handlers = createStreamHandlers({
+        assistantId,
+        setMessages,
+        setError,
+        setLastUsage,
+        streamingMessageIdRef
       });
+
+      await streamChatMessage(environment, request, controller.signal, handlers);
     } catch (error) {
       if ((error as Error).name !== 'AbortError') {
         setError(readableError(error));
       }
 
-      setMessages((current) =>
-        current.map((message) =>
-          message.isStreaming ? { ...message, isStreaming: false } : message
-        )
-      );
+      clearStreamingFlags(setMessages);
     } finally {
       setIsStreaming(false);
       abortControllerRef.current = null;
@@ -224,10 +180,7 @@ export function useChat({ environment, sessionId }: UseChatArgs) {
 }
 
 function normalizeSession(session: ChatSessionSnapshot) {
-  return session.messages.map((message) => ({
-    ...message,
-    role: message.role as 'user' | 'assistant'
-  }));
+  return session.messages;
 }
 
 function readableError(error: unknown) {
@@ -249,6 +202,111 @@ function mapMessages(
   updater: (message: ChatMessageModel) => ChatMessageModel
 ) {
   return messages.map((message) => (predicate(message) ? updater(message) : message));
+}
+
+function appendStreamingPlaceholder(setMessages: MessageSetter, assistantId: string) {
+  setMessages((current) => [
+    ...current,
+    {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      citations: [],
+      createdAtUtc: new Date().toISOString(),
+      isStreaming: true
+    }
+  ]);
+}
+
+function updateStreamingMessage(
+  setMessages: MessageSetter,
+  streamingMessageIdRef: NullableStringRef,
+  fallbackId: string,
+  updater: (message: ChatMessageModel) => ChatMessageModel
+) {
+  const activeId = streamingMessageIdRef.current ?? fallbackId;
+  setMessages((current) => mapMessages(current, (message) => message.id === activeId || Boolean(message.isStreaming), updater));
+}
+
+function renameStreamingMessage(
+  setMessages: MessageSetter,
+  streamingMessageIdRef: NullableStringRef,
+  fallbackId: string,
+  event: StreamStartedEvent
+) {
+  const previousId = streamingMessageIdRef.current ?? fallbackId;
+  streamingMessageIdRef.current = event.answerId;
+  setMessages((current) =>
+    mapMessages(current, (message) => message.id === previousId, (message) => ({
+      ...message,
+      id: event.answerId
+    }))
+  );
+}
+
+function completeStreamingMessage(
+  setMessages: MessageSetter,
+  streamingMessageIdRef: NullableStringRef,
+  fallbackId: string,
+  usage: UsageMetadata
+) {
+  updateStreamingMessage(setMessages, streamingMessageIdRef, fallbackId, (message) => ({
+    ...message,
+    usage,
+    isStreaming: false
+  }));
+}
+
+function failStreamingMessage(
+  setMessages: MessageSetter,
+  streamingMessageIdRef: NullableStringRef,
+  fallbackId: string
+) {
+  updateStreamingMessage(setMessages, streamingMessageIdRef, fallbackId, (message) => ({
+    ...message,
+    content: message.content || 'Falha ao gerar resposta em streaming.',
+    isStreaming: false
+  }));
+}
+
+function clearStreamingFlags(setMessages: MessageSetter) {
+  setMessages((current) => current.map((message) => (message.isStreaming ? { ...message, isStreaming: false } : message)));
+}
+
+function createStreamHandlers(args: {
+  assistantId: string;
+  setMessages: MessageSetter;
+  setError: Dispatch<SetStateAction<string | null>>;
+  setLastUsage: Dispatch<SetStateAction<UsageMetadata | null>>;
+  streamingMessageIdRef: NullableStringRef;
+}) {
+  const { assistantId, setMessages, setError, setLastUsage, streamingMessageIdRef } = args;
+
+  return {
+    onStarted(event: StreamStartedEvent) {
+      renameStreamingMessage(setMessages, streamingMessageIdRef, assistantId, event);
+    },
+    onDelta(event: { text: string }) {
+      updateStreamingMessage(setMessages, streamingMessageIdRef, assistantId, (message) => ({
+        ...message,
+        content: `${message.content}${event.text}`
+      }));
+    },
+    onCitation(citation: Citation) {
+      updateStreamingMessage(setMessages, streamingMessageIdRef, assistantId, (message) => ({
+        ...message,
+        citations: [...message.citations, citation]
+      }));
+    },
+    onCompleted({ usage }: { usage: UsageMetadata }) {
+      completeStreamingMessage(setMessages, streamingMessageIdRef, assistantId, usage);
+      setLastUsage(usage);
+    },
+    onError(streamError: StreamErrorEvent) {
+      setError(streamError.message);
+      failStreamingMessage(setMessages, streamingMessageIdRef, assistantId);
+    }
+  };
 }
 
 function isApiErrorPayload(payload: unknown): payload is ApiErrorPayload {

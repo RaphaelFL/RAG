@@ -141,7 +141,6 @@ builder.Services.AddOptions<ExternalProviderClientOptions>()
     .Validate(options => !string.IsNullOrWhiteSpace(options.AzureOpenAiApiVersion), "ExternalProviderClientOptions:AzureOpenAiApiVersion e obrigatorio.")
     .Validate(options => !string.IsNullOrWhiteSpace(options.AzureSearchApiVersion), "ExternalProviderClientOptions:AzureSearchApiVersion e obrigatorio.")
     .Validate(options => !string.IsNullOrWhiteSpace(options.AzureDocumentIntelligenceApiVersion), "ExternalProviderClientOptions:AzureDocumentIntelligenceApiVersion e obrigatorio.")
-    .Validate(options => !string.IsNullOrWhiteSpace(options.GoogleVisionBaseUrl), "ExternalProviderClientOptions:GoogleVisionBaseUrl e obrigatorio.")
     .ValidateOnStart();
 
 builder.Services
@@ -275,6 +274,20 @@ app.UseMiddleware<RateLimitHeadersMiddleware>();
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
+
+app.MapGet("/", () => Results.Ok(new
+{
+    name = "Chatbot.Api",
+    status = "running",
+    swagger = "/swagger",
+    health = "/health",
+    timestampUtc = DateTime.UtcNow
+}))
+    .AllowAnonymous();
+
+app.MapGet("/favicon.ico", () => Results.NoContent())
+    .AllowAnonymous();
+
 app.MapControllers();
 
 // Add health check endpoint

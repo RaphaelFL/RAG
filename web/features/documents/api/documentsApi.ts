@@ -36,14 +36,19 @@ export async function uploadDocument(
     formData.append('source', input.source);
   }
 
+  const headers: Record<string, string> = {
+    'X-Tenant-Id': env.tenantId,
+    'X-User-Id': env.userId,
+    'X-User-Role': env.userRole
+  };
+
+  if (env.token.trim()) {
+    headers.Authorization = `Bearer ${env.token}`;
+  }
+
   const response = await fetch(buildUrl(env.apiBaseUrl, '/api/v1/documents/ingest'), {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.token}`,
-      'X-Tenant-Id': env.tenantId,
-      'X-User-Id': env.userId,
-      'X-User-Role': env.userRole
-    },
+    headers,
     body: formData
   });
 

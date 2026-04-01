@@ -89,7 +89,7 @@ export function useDocumentUploads(environment: RuntimeEnvironment) {
         return details;
       }
 
-      await new Promise((resolve) => window.setTimeout(resolve, 350));
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 350));
     }
 
     throw new Error('Timeout aguardando indexacao do documento.');

@@ -55,6 +55,7 @@ secrets.json
 src/Api/appsettings.Development.local.json
 src/Api/appsettings.Staging.local.json
 src/Api/appsettings.Production.local.json
+src/Api/appsettings.json
 
 # Logs
 *.log

@@ -97,14 +97,13 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
     private void ValidateAzureSearch(List<string> errors)
     {
-        var fields = new[]
+        var connectionConfigured = HasAnyConfiguredValue(new[]
         {
             _providerOptions.AzureSearchBaseUrl,
-            _providerOptions.AzureSearchApiKey,
-            _searchOptions.IndexName
-        };
+            _providerOptions.AzureSearchApiKey
+        });
 
-        if (!HasAnyConfiguredValue(fields))
+        if (!connectionConfigured)
         {
             return;
         }
@@ -134,14 +133,13 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
     private void ValidateAzureDocumentIntelligence(List<string> errors)
     {
-        var fields = new[]
+        var connectionConfigured = HasAnyConfiguredValue(new[]
         {
             _providerOptions.AzureDocumentIntelligenceBaseUrl,
-            _providerOptions.AzureDocumentIntelligenceApiKey,
-            _ocrOptions.AzureDocumentIntelligenceModelId
-        };
+            _providerOptions.AzureDocumentIntelligenceApiKey
+        });
 
-        if (!HasAnyConfiguredValue(fields))
+        if (!connectionConfigured)
         {
             return;
         }
@@ -156,13 +154,7 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
     private void ValidateGoogleVision(List<string> errors)
     {
-        var fields = new[]
-        {
-            _providerOptions.GoogleVisionBaseUrl,
-            _providerOptions.GoogleVisionApiKey
-        };
-
-        if (!HasAnyConfiguredValue(fields))
+        if (!ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.GoogleVisionApiKey))
         {
             return;
         }

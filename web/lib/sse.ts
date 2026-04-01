@@ -20,7 +20,7 @@ export async function* readServerSentEvents(stream: ReadableStream<Uint8Array>):
       buffer = segments.pop() ?? '';
 
       for (const segment of segments) {
-        const normalized = segment.replace(/\r/g, '');
+        const normalized = segment.replaceAll('\r', '');
         const lines = normalized.split('\n');
         const event = lines.find((line) => line.startsWith('event:'))?.slice(6).trim() ?? 'message';
         const data = lines

@@ -1,7 +1,21 @@
 import type { RuntimeEnvironment } from '@/types/app';
 
+const developmentEnvFallback: Record<string, string> = {
+  NEXT_PUBLIC_API_BASE_URL: 'http://localhost:15214',
+  NEXT_PUBLIC_DEFAULT_BEARER_TOKEN: 'local-dev-token',
+  NEXT_PUBLIC_DEFAULT_TENANT_ID: '11111111-1111-1111-1111-111111111111',
+  NEXT_PUBLIC_DEFAULT_USER_ID: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  NEXT_PUBLIC_DEFAULT_USER_ROLE: 'TenantAdmin',
+  NEXT_PUBLIC_DEFAULT_TEMPLATE_ID: 'grounded_answer',
+  NEXT_PUBLIC_DEFAULT_TEMPLATE_VERSION: '1.0.0',
+  NEXT_PUBLIC_DEFAULT_USE_STREAMING: 'true',
+  NEXT_PUBLIC_DEFAULT_ALLOW_GENERAL_KNOWLEDGE: 'false',
+  NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS: 'http://localhost:15214,https://localhost:15213'
+};
+
 export const publicRuntimeDefaults = {
   apiBaseUrl: requireEnv('NEXT_PUBLIC_API_BASE_URL'),
+  token: readOptionalEnv('NEXT_PUBLIC_DEFAULT_BEARER_TOKEN'),
   tenantId: requireEnv('NEXT_PUBLIC_DEFAULT_TENANT_ID'),
   userId: requireEnv('NEXT_PUBLIC_DEFAULT_USER_ID'),
   userRole: resolveDefaultUserRole(requireEnv('NEXT_PUBLIC_DEFAULT_USER_ROLE')),
@@ -15,7 +29,7 @@ export const publicRuntimeDefaults = {
 export function createDefaultEnvironment(): RuntimeEnvironment {
   return {
     apiBaseUrl: publicRuntimeDefaults.apiBaseUrl,
-    token: '',
+    token: publicRuntimeDefaults.token,
     tenantId: publicRuntimeDefaults.tenantId,
     userId: publicRuntimeDefaults.userId,
     userRole: publicRuntimeDefaults.userRole
@@ -68,12 +82,29 @@ function resolveConnectSrcOrigins(value: string) {
 }
 
 function requireEnv(key: string) {
-  const value = process.env[key];
-  if (!value || !value.trim()) {
+  const value = readEnvValue(key);
+  if (!value?.trim()) {
     throw new Error(`${key} e obrigatoria no web/.env.`);
   }
 
   return value.trim();
+}
+
+function readOptionalEnv(key: string) {
+  return readEnvValue(key)?.trim() ?? '';
+}
+
+function readEnvValue(key: string) {
+  const value = process.env[key]?.trim();
+  if (value) {
+    return value;
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    return developmentEnvFallback[key] ?? '';
+  }
+
+  return '';
 }
 
 function tryGetOrigin(value: string) {
