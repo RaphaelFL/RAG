@@ -43,6 +43,18 @@ web/test-results/
 *.sln.iml
 
 # Local/private override files
+.env
+.env.local
+.env.development.local
+.env.production.local
+web/.env
+web/.env.local
+web/.env.development.local
+web/.env.production.local
+secrets.json
+src/Api/appsettings.Development.local.json
+src/Api/appsettings.Staging.local.json
+src/Api/appsettings.Production.local.json
 
 # Logs
 *.log
