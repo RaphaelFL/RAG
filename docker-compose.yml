@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  chatbot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:80"
+      - "5001:443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=[A PREENCHER]
+    volumes:
+      - ./logs:/app/logs
+      - ./src:/src
+    networks:
+      - chatbot-network
+
+networks:
+  chatbot-network:
+    driver: bridge

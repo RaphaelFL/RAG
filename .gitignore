@@ -1,0 +1,63 @@
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options
+.vs/
+.vscode/
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# Node / Next.js
+node_modules/
+web/node_modules/
+.next/
+web/.next/
+test-results/
+web/test-results/
+
+# Rider
+.idea/
+*.sln.iml
+
+# Local/private override files
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.cache
+.vscode-server/
+
+# ACP / IA artifacts
+.ia/
+docs/13-acp.md
+**/*acp*.md
+**/*ACP*.md

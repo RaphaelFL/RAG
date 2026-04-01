@@ -1,0 +1,85 @@
+import type { RuntimeEnvironment } from '@/types/app';
+
+export const publicRuntimeDefaults = {
+  apiBaseUrl: requireEnv('NEXT_PUBLIC_API_BASE_URL'),
+  tenantId: requireEnv('NEXT_PUBLIC_DEFAULT_TENANT_ID'),
+  userId: requireEnv('NEXT_PUBLIC_DEFAULT_USER_ID'),
+  userRole: resolveDefaultUserRole(requireEnv('NEXT_PUBLIC_DEFAULT_USER_ROLE')),
+  templateId: requireEnv('NEXT_PUBLIC_DEFAULT_TEMPLATE_ID'),
+  templateVersion: requireEnv('NEXT_PUBLIC_DEFAULT_TEMPLATE_VERSION'),
+  useStreaming: resolveBoolean(requireEnv('NEXT_PUBLIC_DEFAULT_USE_STREAMING'), 'NEXT_PUBLIC_DEFAULT_USE_STREAMING'),
+  allowGeneralKnowledge: resolveBoolean(requireEnv('NEXT_PUBLIC_DEFAULT_ALLOW_GENERAL_KNOWLEDGE'), 'NEXT_PUBLIC_DEFAULT_ALLOW_GENERAL_KNOWLEDGE'),
+  connectSrcOrigins: resolveConnectSrcOrigins(requireEnv('NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS'))
+} as const;
+
+export function createDefaultEnvironment(): RuntimeEnvironment {
+  return {
+    apiBaseUrl: publicRuntimeDefaults.apiBaseUrl,
+    token: '',
+    tenantId: publicRuntimeDefaults.tenantId,
+    userId: publicRuntimeDefaults.userId,
+    userRole: publicRuntimeDefaults.userRole
+  };
+}
+
+function resolveDefaultUserRole(value: string | undefined): RuntimeEnvironment['userRole'] {
+  switch (value) {
+    case 'TenantUser':
+    case 'Analyst':
+    case 'TenantAdmin':
+    case 'PlatformAdmin':
+    case 'McpClient':
+      return value;
+    default:
+      throw new Error('NEXT_PUBLIC_DEFAULT_USER_ROLE possui um valor invalido.');
+  }
+}
+
+function resolveBoolean(value: string, key: string) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') {
+    return true;
+  }
+
+  if (normalized === 'false') {
+    return false;
+  }
+
+  throw new Error(`${key} deve ser 'true' ou 'false'.`);
+}
+
+function resolveConnectSrcOrigins(value: string) {
+  const origins = new Set<string>();
+
+  for (const item of value.split(',')) {
+    const origin = tryGetOrigin(item);
+    if (!origin) {
+      throw new Error('NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS contem uma origem invalida.');
+    }
+
+    origins.add(origin);
+  }
+
+  if (origins.size === 0) {
+    throw new Error('NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS deve conter ao menos uma origem valida.');
+  }
+
+  return Array.from(origins);
+}
+
+function requireEnv(key: string) {
+  const value = process.env[key];
+  if (!value || !value.trim()) {
+    throw new Error(`${key} e obrigatoria no web/.env.`);
+  }
+
+  return value.trim();
+}
+
+function tryGetOrigin(value: string) {
+  try {
+    return new URL(value.trim()).origin;
+  } catch {
+    return null;
+  }
+}

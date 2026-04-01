@@ -1,0 +1,12 @@
+[
+  {
+    "id": "BE-001",
+    "tenant": "11111111-1111-1111-1111-111111111111",
+    "question": "Quais sao as regras de reembolso?",
+    "expectedDocuments": ["Politica Financeira"],
+    "expectedChunks": ["reembolso"],
+    "expectedCitations": ["Politica Financeira"],
+    "acceptableAnswerContains": ["relevantes", "citations"],
+    "policy": "grounded_answer"
+  }
+]

@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Api/Chatbot.Api.csproj" />
+    <Project Path="src/Application/Chatbot.Application.csproj" />
+    <Project Path="src/Domain/Chatbot.Domain.csproj" />
+    <Project Path="src/Infrastructure/Chatbot.Infrastructure.csproj" />
+    <Project Path="src/Ingestion/Chatbot.Ingestion.csproj" />
+    <Project Path="src/Retrieval/Chatbot.Retrieval.csproj" />
+    <Project Path="src/Mcp/Chatbot.Mcp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Backend.Unit/Backend.Unit.csproj" />
+    <Project Path="tests/Backend.Integration/Backend.Integration.csproj" />
+  </Folder>
+</Solution>
