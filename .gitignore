@@ -52,10 +52,10 @@ web/.env.local
 web/.env.development.local
 web/.env.production.local
 secrets.json
-src/Api/appsettings.Development.local.json
-src/Api/appsettings.Staging.local.json
-src/Api/appsettings.Production.local.json
-src/Api/appsettings.json
+/src/Api/appsettings.Development.local.json
+/src/Api/appsettings.Staging.local.json
+/src/Api/appsettings.Production.local.json
+/src/Api/appsettings.json
 
 # Logs
 *.log
