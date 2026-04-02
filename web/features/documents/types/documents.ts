@@ -6,6 +6,15 @@ export type UploadDocumentResponse = {
   createdAtUtc: string;
 };
 
+export type DocumentMetadataSuggestion = {
+  suggestedTitle: string;
+  suggestedCategory?: string | null;
+  suggestedCategories: string[];
+  suggestedTags: string[];
+  strategy: string;
+  previewText: string;
+};
+
 export type DocumentDetails = {
   documentId: string;
   title: string;
@@ -27,10 +36,21 @@ export type DocumentDetails = {
 
 export type DocumentUploadModel = {
   localId: string;
+  conversationSessionId: string;
   fileName: string;
   documentId?: string;
   ingestionJobId?: string;
   status: string;
+  logicalTitle?: string;
+  category?: string;
+  tags?: string[];
   error?: string;
   details?: DocumentDetails;
+};
+
+export type BulkReindexResponse = {
+  accepted: boolean;
+  jobId: string;
+  mode: string;
+  documentCount: number;
 };

@@ -33,14 +33,70 @@ public class DocumentsController : ControllerBase
     };
 
     private readonly IIngestionPipeline _ingestionPipeline;
+    private readonly IDocumentMetadataSuggestionService _documentMetadataSuggestionService;
     private readonly ISecurityAuditLogger _securityAuditLogger;
     private readonly ILogger<DocumentsController> _logger;
 
-    public DocumentsController(IIngestionPipeline ingestionPipeline, ISecurityAuditLogger securityAuditLogger, ILogger<DocumentsController> logger)
+    public DocumentsController(
+        IIngestionPipeline ingestionPipeline,
+        IDocumentMetadataSuggestionService documentMetadataSuggestionService,
+        ISecurityAuditLogger securityAuditLogger,
+        ILogger<DocumentsController> logger)
     {
         _ingestionPipeline = ingestionPipeline;
+        _documentMetadataSuggestionService = documentMetadataSuggestionService;
         _securityAuditLogger = securityAuditLogger;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Sugere titulo logico, categoria e tags antes da ingestao definitiva.
+    /// </summary>
+    [HttpPost("suggest-metadata")]
+    [Consumes("multipart/form-data")]
+    [EnableRateLimiting("upload")]
+    [ProducesResponseType(typeof(DocumentMetadataSuggestionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status413PayloadTooLarge)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<DocumentMetadataSuggestionDto>> SuggestMetadata(
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Document metadata suggestion initiated: {filename}", file.FileName);
+
+        var validationError = ValidateIncomingFile(file);
+        if (validationError is not null)
+        {
+            return validationError;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var suggestion = await _documentMetadataSuggestionService.SuggestAsync(new IngestDocumentCommand
+            {
+                DocumentId = Guid.NewGuid(),
+                TenantId = GetRequiredTenantId(),
+                FileName = file.FileName,
+                ContentType = file.ContentType,
+                ContentLength = file.Length,
+                Content = stream
+            }, cancellationToken);
+
+            return Ok(suggestion);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error suggesting metadata for document {filename}", file.FileName);
+            return StatusCode(StatusCodes.Status500InternalServerError, new ErrorResponseDto
+            {
+                Code = "metadata_suggestion_failed",
+                Message = "Failed to analyze document metadata",
+                TraceId = HttpContext.TraceIdentifier
+            });
+        }
     }
 
     /// <summary>
@@ -69,26 +125,14 @@ public class DocumentsController : ControllerBase
     {
         _logger.LogInformation("Document upload initiated: {filename}", file.FileName);
 
+        var validationError = ValidateIncomingFile(file);
+        if (validationError is not null)
+        {
+            return validationError;
+        }
+
         try
         {
-            if (file.Length == 0)
-                return BadRequest(new ErrorResponseDto
-                {
-                    Code = "empty_file",
-                    Message = "File is empty",
-                    TraceId = HttpContext.TraceIdentifier
-                });
-
-            if (file.Length > 100 * 1024 * 1024) // 100 MB
-                return StatusCode(StatusCodes.Status413PayloadTooLarge, new ErrorResponseDto
-                {
-                    Code = "file_too_large",
-                    Message = "File exceeds maximum size of 100MB",
-                    TraceId = HttpContext.TraceIdentifier
-                });
-
-            ValidateUpload(file);
-
             var documentId = Guid.NewGuid();
             var tenantId = GetRequiredTenantId();
 
@@ -205,7 +249,7 @@ public class DocumentsController : ControllerBase
     {
         try
         {
-            var response = await _ingestionPipeline.ReindexAsync(request, cancellationToken);
+            var response = await _ingestionPipeline.ReindexAsync(request, GetRequiredTenantId(), cancellationToken);
             return Accepted(response);
         }
         catch (UnauthorizedAccessException ex)
@@ -259,8 +303,13 @@ public class DocumentsController : ControllerBase
 
     private Guid GetRequiredTenantId()
     {
-        var rawTenantId = User.FindFirst("tenant_id")?.Value ?? HttpContext.Request.Headers["X-Tenant-Id"].ToString();
-        return Guid.Parse(rawTenantId);
+        var rawTenantId = User.FindFirst("tenant_id")?.Value;
+        if (!Guid.TryParse(rawTenantId, out var tenantId))
+        {
+            throw new UnauthorizedAccessException("Authentication is required.");
+        }
+
+        return tenantId;
     }
 
     private static List<string> ParseCsv(string? value)
@@ -323,5 +372,44 @@ public class DocumentsController : ControllerBase
 
         var preview = Encoding.UTF8.GetString(header);
         return !string.IsNullOrWhiteSpace(preview);
+    }
+
+    private ActionResult? ValidateIncomingFile(IFormFile file)
+    {
+        if (file.Length == 0)
+        {
+            return BadRequest(new ErrorResponseDto
+            {
+                Code = "empty_file",
+                Message = "File is empty",
+                TraceId = HttpContext.TraceIdentifier
+            });
+        }
+
+        if (file.Length > 100 * 1024 * 1024)
+        {
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new ErrorResponseDto
+            {
+                Code = "file_too_large",
+                Message = "File exceeds maximum size of 100MB",
+                TraceId = HttpContext.TraceIdentifier
+            });
+        }
+
+        try
+        {
+            ValidateUpload(file);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _securityAuditLogger.LogFileRejected(file.FileName, ex.Message);
+            return BadRequest(new ErrorResponseDto
+            {
+                Code = "invalid_file",
+                Message = ex.Message,
+                TraceId = HttpContext.TraceIdentifier
+            });
+        }
     }
 }

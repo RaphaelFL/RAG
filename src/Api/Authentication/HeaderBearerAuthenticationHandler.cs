@@ -67,8 +67,7 @@ public sealed class HeaderBearerAuthenticationHandler : AuthenticationHandler<Au
             new(ClaimTypes.NameIdentifier, userId),
             new(ClaimTypes.Name, userId),
             new(ClaimTypes.Role, role),
-            new("tenant_id", tenantId.ToString()),
-            new("access_token_preview", token.Length <= 8 ? token : token[..8])
+            new("tenant_id", tenantId.ToString())
         };
 
         var identity = new ClaimsIdentity(claims, Scheme.Name);

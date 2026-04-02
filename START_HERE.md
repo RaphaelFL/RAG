@@ -8,14 +8,14 @@ Na raiz do repositório:
 
 ```bash
 dotnet restore ChatbotApi.slnx
-dotnet run --project src/Api
+.\scripts\run-api.ps1
 ```
 
 Teste a saúde:
 
 ```bash
-curl http://localhost:5000/health
-curl http://localhost:5000/api/v1/health
+curl http://localhost:15214/health
+curl http://localhost:15214/api/v1/health
 ```
 
 ## 2. Frontend
@@ -42,7 +42,7 @@ Use sempre:
 ## 4. Exemplo mínimo de chat
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/chat/message \
+curl -X POST http://localhost:15214/api/v1/chat/message \
    -H "Authorization: Bearer dev-token" \
    -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" \
    -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
@@ -54,7 +54,7 @@ curl -X POST http://localhost:5000/api/v1/chat/message \
 ## 5. Exemplo mínimo de upload
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/documents/ingest \
+curl -X POST http://localhost:15214/api/v1/documents/ingest \
    -H "Authorization: Bearer dev-token" \
    -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" \
    -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \

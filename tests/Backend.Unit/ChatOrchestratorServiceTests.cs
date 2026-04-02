@@ -68,7 +68,7 @@ public class ChatOrchestratorServiceTests
                     DocumentId = Guid.NewGuid(),
                     DocumentTitle = "Manual",
                     ChunkId = "chunk-1",
-                    Content = "Trecho de teste",
+                    Content = "A regra de reembolso exige aprovacao do gestor para valores acima de R$ 500.",
                     Score = 0.92
                 }
             }
@@ -77,7 +77,7 @@ public class ChatOrchestratorServiceTests
         var response = await sut.SendAsync(new ChatRequestDto
         {
             SessionId = Guid.NewGuid(),
-            Message = "Qual e a regra?",
+            Message = "Qual e a regra de reembolso?",
             TemplateId = "grounded_answer",
             TemplateVersion = "1.0.0"
         }, CancellationToken.None);
@@ -120,6 +120,76 @@ public class ChatOrchestratorServiceTests
         response.Policy.Grounded.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task SendAsync_ShouldForwardConversationDocumentFiltersToRetrieval()
+    {
+        var retrievalService = new CapturingRetrievalService(new RetrievalResultDto());
+        var documentId = Guid.NewGuid();
+        var sut = CreateSut(retrievalService, new StaticAgenticChatPlanner());
+
+        await sut.SendAsync(new ChatRequestDto
+        {
+            SessionId = Guid.NewGuid(),
+            Message = "Responda com base no documento enviado",
+            TemplateId = "grounded_answer",
+            TemplateVersion = "1.0.0",
+            Filters = new ChatFiltersDto
+            {
+                DocumentIds = new List<Guid> { documentId },
+                Categories = new List<string> { "politicas" },
+                Tags = new List<string> { "reembolso" }
+            },
+            Options = new ChatOptionsDto
+            {
+                AllowGeneralKnowledge = true,
+                MaxCitations = 3
+            }
+        }, CancellationToken.None);
+
+        retrievalService.LastQuery.Should().NotBeNull();
+        retrievalService.LastQuery!.DocumentIds.Should().BeEquivalentTo(new[] { documentId });
+        retrievalService.LastQuery.Categories.Should().BeEquivalentTo(new[] { "politicas" });
+        retrievalService.LastQuery.Tags.Should().BeEquivalentTo(new[] { "reembolso" });
+    }
+
+    [Fact]
+    public async Task SendAsync_ShouldFallbackToGeneralKnowledge_WhenRetrievedChunkLooksLikeNoise()
+    {
+        var sut = CreateSut(
+            new FakeRetrievalService(new RetrievalResultDto
+            {
+                Chunks = new List<RetrievedChunkDto>
+                {
+                    new()
+                    {
+                        DocumentId = Guid.NewGuid(),
+                        DocumentTitle = "Manual Corrompido",
+                        ChunkId = "chunk-noise",
+                        Content = "%PDF-1.7 obj stream xref /Length 2456 endstream trailer",
+                        Score = 0.97
+                    }
+                }
+            }),
+            new StaticAgenticChatPlanner(new AgenticChatPlan
+            {
+                RequiresRetrieval = true,
+                AllowsGeneralKnowledge = true,
+                ExecutionMode = "auto-hybrid"
+            }));
+
+        var response = await sut.SendAsync(new ChatRequestDto
+        {
+            SessionId = Guid.NewGuid(),
+            Message = "Explique o que e RAG.",
+            TemplateId = "grounded_answer",
+            TemplateVersion = "1.0.0"
+        }, CancellationToken.None);
+
+        response.Message.Should().Be("Resposta geral para: Explique o que e RAG.");
+        response.Citations.Should().BeEmpty();
+        response.Policy.Grounded.Should().BeFalse();
+    }
+
     private static ChatOrchestratorService CreateSut(
         RetrievalResultDto retrievalResult,
         CapturingSecurityAuditLogger? auditLogger = null,
@@ -132,8 +202,19 @@ public class ChatOrchestratorServiceTests
         CapturingSecurityAuditLogger? auditLogger = null,
         CapturingChatSessionStore? sessionStore = null)
     {
-        var templates = new PromptTemplateRegistry(Options.Create(new PromptTemplateOptions()));
-        var detector = new PromptInjectionDetector(Options.Create(new PromptTemplateOptions()));
+        var promptOptions = Options.Create(new PromptTemplateOptions
+        {
+            GroundedAnswerVersion = "1.0.0",
+            DefaultTimeout = 30,
+            InsufficientEvidenceMessage = "Nao encontrei evidencia documental suficiente para responder com seguranca a partir da base indexada.",
+            BlockedInputPatterns = new[]
+            {
+                "ignore previous instructions",
+                "reveal secret"
+            }
+        });
+        var templates = new PromptTemplateRegistry(promptOptions);
+        var detector = new PromptInjectionDetector(promptOptions);
 
         return new ChatOrchestratorService(
             retrievalService,
@@ -145,7 +226,9 @@ public class ChatOrchestratorServiceTests
             sessionStore ?? new CapturingChatSessionStore(),
             new FakeRequestContextAccessor(),
             auditLogger ?? new CapturingSecurityAuditLogger(),
+                new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
+                new StaticRagRuntimeSettings(),
             new ResiliencePipelineBuilder().Build(),
             NullLogger<ChatOrchestratorService>.Instance);
     }
@@ -179,6 +262,27 @@ public class ChatOrchestratorServiceTests
         public Task<RetrievalResultDto> RetrieveAsync(RetrievalQueryDto query, CancellationToken ct)
         {
             CallCount++;
+            return Task.FromResult(_result);
+        }
+
+        public Task<SearchQueryResponseDto> QueryAsync(SearchQueryRequestDto query, CancellationToken ct) =>
+            Task.FromResult(new SearchQueryResponseDto());
+    }
+
+    private sealed class CapturingRetrievalService : IRetrievalService
+    {
+        private readonly RetrievalResultDto _result;
+
+        public CapturingRetrievalService(RetrievalResultDto result)
+        {
+            _result = result;
+        }
+
+        public RetrievalQueryDto? LastQuery { get; private set; }
+
+        public Task<RetrievalResultDto> RetrieveAsync(RetrievalQueryDto query, CancellationToken ct)
+        {
+            LastQuery = query;
             return Task.FromResult(_result);
         }
 
@@ -255,6 +359,47 @@ public class ChatOrchestratorServiceTests
         public bool IsSemanticRankingEnabled => true;
         public bool IsGraphRagEnabled => false;
         public bool IsMcpEnabled => false;
+    }
+
+    private sealed class StaticRagRuntimeSettings : IRagRuntimeSettings
+    {
+        public int DenseChunkSize => 420;
+        public int DenseOverlap => 48;
+        public int NarrativeChunkSize => 900;
+        public int NarrativeOverlap => 96;
+        public int MinimumChunkCharacters => 120;
+        public int RetrievalCandidateMultiplier => 3;
+        public int RetrievalMaxCandidateCount => 24;
+        public int MaxContextChunks => 4;
+        public double MinimumRerankScore => 0.1;
+        public double ExactMatchBoost => 0.18;
+        public double TitleMatchBoost => 0.08;
+        public double FilterMatchBoost => 0.05;
+        public TimeSpan RetrievalCacheTtl => TimeSpan.FromMinutes(5);
+        public TimeSpan ChatCompletionCacheTtl => TimeSpan.FromMinutes(10);
+        public TimeSpan EmbeddingCacheTtl => TimeSpan.FromHours(24);
+    }
+
+    private sealed class InMemoryApplicationCache : IApplicationCache
+    {
+        private readonly Dictionary<string, object> _entries = new();
+
+        public Task<T?> GetAsync<T>(string key, CancellationToken ct)
+        {
+            return Task.FromResult(_entries.TryGetValue(key, out var value) ? (T?)value : default);
+        }
+
+        public Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken ct)
+        {
+            _entries[key] = value!;
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(string key, CancellationToken ct)
+        {
+            _entries.Remove(key);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeChatCompletionProvider : IChatCompletionProvider

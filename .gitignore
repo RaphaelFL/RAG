@@ -56,6 +56,11 @@ secrets.json
 /src/Api/appsettings.Staging.local.json
 /src/Api/appsettings.Production.local.json
 /src/Api/appsettings.json
+artifacts/
+src/**/artifacts/
+**/artifacts/**/appsettings.json
+**/artifacts/**/appsettings.*.json
+web/manual-front-*.json
 
 # Logs
 *.log

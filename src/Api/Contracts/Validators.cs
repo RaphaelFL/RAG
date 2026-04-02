@@ -38,7 +38,9 @@ public class BulkReindexRequestValidator : AbstractValidator<BulkReindexRequestD
 {
     public BulkReindexRequestValidator()
     {
-        RuleFor(x => x.DocumentIds).NotEmpty();
+        RuleFor(x => x)
+            .Must(request => request.IncludeAllTenantDocuments || request.DocumentIds.Count > 0)
+            .WithMessage("Informe documentIds ou marque IncludeAllTenantDocuments.");
         RuleForEach(x => x.DocumentIds).NotEmpty();
         RuleFor(x => x.Mode)
             .NotEmpty()

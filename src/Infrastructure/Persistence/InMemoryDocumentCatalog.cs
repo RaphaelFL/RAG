@@ -20,12 +20,41 @@ public sealed class InMemoryDocumentCatalog : IDocumentCatalog
 
     public IReadOnlyCollection<DocumentCatalogEntry> Query(FileSearchFilterDto? filters)
     {
-        return Documents.Values
-            .Where(document => !filters?.TenantId.HasValue ?? true || document.TenantId == filters!.TenantId!.Value)
-            .Where(document => filters?.DocumentIds is not { Count: > 0 } || filters.DocumentIds.Contains(document.DocumentId))
-            .Where(document => filters?.Tags is not { Count: > 0 } || filters.Tags.Any(tag => document.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase)))
-            .Where(document => filters?.Categories is not { Count: > 0 } || filters.Categories.Any(category => document.Categories.Contains(category, StringComparer.OrdinalIgnoreCase)))
-            .ToList();
+        IEnumerable<DocumentCatalogEntry> query = Documents.Values;
+
+        if (filters?.TenantId is Guid tenantId)
+        {
+            query = query.Where(document => document.TenantId == tenantId);
+        }
+
+        if (filters?.DocumentIds is { Count: > 0 })
+        {
+            query = query.Where(document => filters.DocumentIds.Contains(document.DocumentId));
+        }
+
+        if (filters?.Tags is { Count: > 0 })
+        {
+            query = query.Where(document => filters.Tags.Any(tag => document.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase)));
+        }
+
+        if (filters?.Categories is { Count: > 0 })
+        {
+            query = query.Where(document =>
+                filters.Categories.Any(category => document.Categories.Contains(category, StringComparer.OrdinalIgnoreCase)) ||
+                filters.Categories.Any(category => string.Equals(category, document.Category, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (filters?.ContentTypes is { Count: > 0 })
+        {
+            query = query.Where(document => filters.ContentTypes.Any(contentType => string.Equals(contentType, document.ContentType, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (filters?.Sources is { Count: > 0 })
+        {
+            query = query.Where(document => filters.Sources.Any(source => string.Equals(source, document.Source, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return query.ToList();
     }
 
     public DocumentCatalogEntry? FindByContentHash(Guid tenantId, string contentHash)

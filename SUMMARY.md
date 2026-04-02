@@ -121,7 +121,7 @@ Frontend (não incluído):
 
 ```
 /ChatbotApi
-├── ChatbotApi.sln                (solução)
+├── ChatbotApi.slnx               (solução)
 ├── README.md                       (overview)
 ├── GETTING_STARTED.md              (quick start)
 ├── Dockerfile                      (containerização)
@@ -135,14 +135,12 @@ Frontend (não incluído):
 │   ├── security-template.md
 │   ├── standards-template.md
 │   ├── tests-template.md
-│   └── README-ACP.md
 │
 ├── src/
 │   ├── Api/
 │   │   ├── Chatbot.Api.csproj
 │   │   ├── Program.cs              (startup)
 │   │   ├── appsettings.json
-│   │   ├── appsettings.Development.json
 │   │   ├── GlobalUsings.cs
 │   │   ├── Controllers/
 │   │   │   ├── ChatController.cs
@@ -218,20 +216,19 @@ cd c:\Users\Raphs\OneDrive\Área de Trabalho\RAG
 dotnet restore
 
 # Executar
-cd src/Api
-dotnet run
+.\scripts\run-api.ps1
 ```
 
-→ API em `http://localhost:5000`
+→ API em `http://localhost:15214`
 
 ### Testar Endpoints
 
 ```bash
 # Health
-curl http://localhost:5000/health
+curl http://localhost:15214/health
 
 # Chat
-curl -X POST http://localhost:5000/api/v1/chat/message \
+curl -X POST http://localhost:15214/api/v1/chat/message \
   -H "Content-Type: application/json" \
   -d '{"sessionId":"550e8400-e29b-41d4-a716-446655440000","message":"Olá"}'
 ```

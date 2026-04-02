@@ -1,15 +1,39 @@
+param(
+    [int[]]$ExcludedProcessIds = @()
+)
+
 $ErrorActionPreference = 'Stop'
 
 function Get-ChatbotApiProcessIds {
     $processes = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
     $processIds = [System.Collections.Generic.HashSet[int]]::new()
     $pendingIds = [System.Collections.Generic.Queue[int]]::new()
+    $excludedIds = [System.Collections.Generic.HashSet[int]]::new()
+
+    foreach ($excludedProcessId in $ExcludedProcessIds) {
+        [void]$excludedIds.Add([int]$excludedProcessId)
+    }
+
+    $currentProcess = $processes | Where-Object { [int]$_.ProcessId -eq $PID } | Select-Object -First 1
+    if ($null -ne $currentProcess) {
+        [void]$excludedIds.Add([int]$currentProcess.ProcessId)
+        [void]$excludedIds.Add([int]$currentProcess.ParentProcessId)
+    }
 
     foreach ($process in $processes) {
+        if ($excludedIds.Contains([int]$process.ProcessId)) {
+            continue
+        }
+
+        $commandLine = [string]$process.CommandLine
+
         $isChatbotExecutable = $process.Name -eq 'Chatbot.Api.exe'
         $isChatbotDotnetHost = $process.Name -eq 'dotnet.exe' -and (
-            $process.CommandLine -like '*Chatbot.Api*' -or
-            $process.CommandLine -like '*src\\Api*'
+            (($commandLine -match '\brun\b') -and (
+                $commandLine -like '*Chatbot.Api*' -or
+                $commandLine -like '*src\\Api*'
+            )) -or
+            $commandLine -like '*Chatbot.Api.dll*'
         )
 
         if (-not ($isChatbotExecutable -or $isChatbotDotnetHost)) {
@@ -26,6 +50,10 @@ function Get-ChatbotApiProcessIds {
 
         foreach ($childProcess in $processes) {
             if ([int]$childProcess.ParentProcessId -ne $parentId) {
+                continue
+            }
+
+            if ($excludedIds.Contains([int]$childProcess.ProcessId)) {
                 continue
             }
 

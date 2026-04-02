@@ -50,6 +50,7 @@ public sealed class InMemoryChatSessionStore : IChatSessionStore
                         : new Chatbot.Application.Contracts.LocationDto
                         {
                             Page = citation.Location.Page,
+                            EndPage = citation.Location.EndPage,
                             Section = citation.Location.Section
                         }
                 }).ToList(),
@@ -122,6 +123,7 @@ public sealed class InMemoryChatSessionStore : IChatSessionStore
                         : new Location
                         {
                             Page = citation.Location.Page,
+                            EndPage = citation.Location.EndPage,
                             Section = citation.Location.Section
                         }
                 }).ToList(),

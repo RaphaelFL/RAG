@@ -19,6 +19,7 @@ public sealed class CitationAssembler : ICitationAssembler
                 Location = new LocationDto
                 {
                     Page = chunk.PageNumber,
+                    EndPage = chunk.EndPageNumber,
                     Section = chunk.Section
                 }
             })

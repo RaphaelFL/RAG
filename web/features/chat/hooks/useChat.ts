@@ -38,11 +38,19 @@ export function useChat({ environment, sessionId }: UseChatArgs) {
     [messages]
   );
 
-  async function hydrateSession() {
+  async function hydrateSession(targetSessionId?: string) {
     setError(null);
+    const resolvedSessionId = normalizeSessionId(targetSessionId ?? sessionId);
+
+    if (!resolvedSessionId) {
+      startTransition(() => {
+        setMessages([]);
+      });
+      return null;
+    }
 
     try {
-      const session = await getChatSession(environment, sessionId);
+      const session = await getChatSession(environment, resolvedSessionId);
       startTransition(() => {
         setMessages(normalizeSession(session));
       });
@@ -61,14 +69,19 @@ export function useChat({ environment, sessionId }: UseChatArgs) {
   }
 
   async function sendMessage(input: {
+    sessionId?: string;
     message: string;
     templateId: string;
     templateVersion: string;
-    categories: string[];
-    tags: string[];
+    documentIds: string[];
     useStreaming: boolean;
-    allowGeneralKnowledge: boolean;
   }) {
+    const resolvedSessionId = normalizeSessionId(input.sessionId ?? sessionId);
+    if (!resolvedSessionId) {
+      setError('Session Id invalido.');
+      return;
+    }
+
     const userEntry: ChatMessageModel = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -81,17 +94,14 @@ export function useChat({ environment, sessionId }: UseChatArgs) {
     setMessages((current) => [...current, userEntry]);
 
     const request: ChatRequest = {
-      sessionId,
+      sessionId: resolvedSessionId,
       message: input.message,
       templateId: input.templateId,
       templateVersion: input.templateVersion,
-      filters: {
-        categories: input.categories,
-        tags: input.tags
-      },
+      filters: input.documentIds.length > 0 ? { documentIds: input.documentIds } : undefined,
       options: {
         maxCitations: 5,
-        allowGeneralKnowledge: input.allowGeneralKnowledge,
+        allowGeneralKnowledge: true,
         semanticRanking: true
       }
     };
@@ -179,6 +189,10 @@ export function useChat({ environment, sessionId }: UseChatArgs) {
   };
 }
 
+function normalizeSessionId(value: string) {
+  return value.trim();
+}
+
 function normalizeSession(session: ChatSessionSnapshot) {
   return session.messages;
 }
@@ -252,6 +266,7 @@ function completeStreamingMessage(
 ) {
   updateStreamingMessage(setMessages, streamingMessageIdRef, fallbackId, (message) => ({
     ...message,
+    content: message.content.trim() ? message.content : 'Nenhum conteudo foi retornado pela resposta em streaming.',
     usage,
     isStreaming: false
   }));

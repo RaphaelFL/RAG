@@ -3,6 +3,7 @@ import type { RuntimeEnvironment } from '@/types/app';
 const developmentEnvFallback: Record<string, string> = {
   NEXT_PUBLIC_API_BASE_URL: 'http://localhost:15214',
   NEXT_PUBLIC_DEFAULT_BEARER_TOKEN: 'local-dev-token',
+  NEXT_PUBLIC_AUTH_MODE: 'development-headers',
   NEXT_PUBLIC_DEFAULT_TENANT_ID: '11111111-1111-1111-1111-111111111111',
   NEXT_PUBLIC_DEFAULT_USER_ID: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   NEXT_PUBLIC_DEFAULT_USER_ROLE: 'TenantAdmin',
@@ -10,12 +11,13 @@ const developmentEnvFallback: Record<string, string> = {
   NEXT_PUBLIC_DEFAULT_TEMPLATE_VERSION: '1.0.0',
   NEXT_PUBLIC_DEFAULT_USE_STREAMING: 'true',
   NEXT_PUBLIC_DEFAULT_ALLOW_GENERAL_KNOWLEDGE: 'false',
-  NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS: 'http://localhost:15214,https://localhost:15213'
+  NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS: 'http://localhost:15214,https://localhost:15213,http://localhost:5000'
 };
 
 export const publicRuntimeDefaults = {
   apiBaseUrl: requireEnv('NEXT_PUBLIC_API_BASE_URL'),
   token: readOptionalEnv('NEXT_PUBLIC_DEFAULT_BEARER_TOKEN'),
+  authMode: resolveAuthMode(readOptionalEnv('NEXT_PUBLIC_AUTH_MODE') || 'jwt'),
   tenantId: requireEnv('NEXT_PUBLIC_DEFAULT_TENANT_ID'),
   userId: requireEnv('NEXT_PUBLIC_DEFAULT_USER_ID'),
   userRole: resolveDefaultUserRole(requireEnv('NEXT_PUBLIC_DEFAULT_USER_ROLE')),
@@ -23,17 +25,31 @@ export const publicRuntimeDefaults = {
   templateVersion: requireEnv('NEXT_PUBLIC_DEFAULT_TEMPLATE_VERSION'),
   useStreaming: resolveBoolean(requireEnv('NEXT_PUBLIC_DEFAULT_USE_STREAMING'), 'NEXT_PUBLIC_DEFAULT_USE_STREAMING'),
   allowGeneralKnowledge: resolveBoolean(requireEnv('NEXT_PUBLIC_DEFAULT_ALLOW_GENERAL_KNOWLEDGE'), 'NEXT_PUBLIC_DEFAULT_ALLOW_GENERAL_KNOWLEDGE'),
-  connectSrcOrigins: resolveConnectSrcOrigins(requireEnv('NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS'))
+  connectSrcOrigins: resolveConnectSrcOrigins(
+    requireEnv('NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS'),
+    requireEnv('NEXT_PUBLIC_API_BASE_URL')
+  )
 } as const;
 
 export function createDefaultEnvironment(): RuntimeEnvironment {
   return {
     apiBaseUrl: publicRuntimeDefaults.apiBaseUrl,
     token: publicRuntimeDefaults.token,
+    authMode: publicRuntimeDefaults.authMode,
     tenantId: publicRuntimeDefaults.tenantId,
     userId: publicRuntimeDefaults.userId,
     userRole: publicRuntimeDefaults.userRole
   };
+}
+
+function resolveAuthMode(value: string | undefined): RuntimeEnvironment['authMode'] {
+  switch (value) {
+    case 'jwt':
+    case 'development-headers':
+      return value;
+    default:
+      throw new Error('NEXT_PUBLIC_AUTH_MODE possui um valor invalido.');
+  }
 }
 
 function resolveDefaultUserRole(value: string | undefined): RuntimeEnvironment['userRole'] {
@@ -62,8 +78,15 @@ function resolveBoolean(value: string, key: string) {
   throw new Error(`${key} deve ser 'true' ou 'false'.`);
 }
 
-function resolveConnectSrcOrigins(value: string) {
+function resolveConnectSrcOrigins(value: string, apiBaseUrl: string) {
   const origins = new Set<string>();
+
+  const apiOrigin = tryGetOrigin(apiBaseUrl);
+  if (!apiOrigin) {
+    throw new Error('NEXT_PUBLIC_API_BASE_URL contem uma origem invalida.');
+  }
+
+  addLoopbackAliases(origins, apiOrigin);
 
   for (const item of value.split(',')) {
     const origin = tryGetOrigin(item);
@@ -71,7 +94,7 @@ function resolveConnectSrcOrigins(value: string) {
       throw new Error('NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS contem uma origem invalida.');
     }
 
-    origins.add(origin);
+    addLoopbackAliases(origins, origin);
   }
 
   if (origins.size === 0) {
@@ -112,5 +135,26 @@ function tryGetOrigin(value: string) {
     return new URL(value.trim()).origin;
   } catch {
     return null;
+  }
+}
+
+function addLoopbackAliases(origins: Set<string>, origin: string) {
+  const parsed = new URL(origin);
+  const normalizedHost = parsed.hostname.toLowerCase();
+  const isLoopback = normalizedHost === 'localhost' || normalizedHost === '127.0.0.1' || normalizedHost === '::1';
+
+  if (!isLoopback || normalizedHost !== '::1') {
+    origins.add(parsed.origin);
+  }
+
+  if (!isLoopback) {
+    return;
+  }
+
+  const port = parsed.port;
+  const aliases = ['localhost', '127.0.0.1'];
+  for (const host of aliases) {
+    const portSuffix = port ? `:${port}` : '';
+    origins.add(`${parsed.protocol}//${host}${portSuffix}`);
   }
 }

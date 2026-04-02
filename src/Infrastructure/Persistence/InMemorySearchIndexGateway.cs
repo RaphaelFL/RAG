@@ -4,7 +4,7 @@ namespace Chatbot.Infrastructure.Persistence;
 
 public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
 {
-    private static readonly List<SearchResultDto> Index = new();
+    private static readonly List<IndexedChunk> Index = new();
     private readonly IDocumentCatalog _documentCatalog;
 
     public InMemorySearchIndexGateway(IDocumentCatalog documentCatalog)
@@ -19,13 +19,14 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
             foreach (var chunk in chunks)
             {
                 Index.RemoveAll(existing => existing.ChunkId == chunk.ChunkId);
-                Index.Add(new SearchResultDto
+                Index.Add(new IndexedChunk
                 {
                     ChunkId = chunk.ChunkId,
                     DocumentId = chunk.DocumentId,
                     Content = chunk.Content,
                     Score = 0.95,
-                    Metadata = new Dictionary<string, string>(chunk.Metadata)
+                    Metadata = new Dictionary<string, string>(chunk.Metadata),
+                    Embedding = chunk.Embedding
                 });
             }
         }
@@ -33,9 +34,9 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
         return Task.CompletedTask;
     }
 
-    public Task<List<SearchResultDto>> HybridSearchAsync(string query, int topK, FileSearchFilterDto? filters, CancellationToken ct)
+    public Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
     {
-        List<SearchResultDto> candidateResults;
+        List<IndexedChunk> candidateResults;
         lock (Index)
         {
             candidateResults = Index.Where(result => MatchesFilters(result, filters)).ToList();
@@ -53,7 +54,7 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
                 DocumentId = result.DocumentId,
                 Content = result.Content,
                 Metadata = result.Metadata,
-                Score = CalculateScore(query, result.Content)
+                Score = CalculateScore(query, queryEmbedding, result)
             })
             .OrderByDescending(result => result.Score)
             .Take(topK)
@@ -72,28 +73,29 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
         return Task.CompletedTask;
     }
 
-    private List<SearchResultDto> BuildFallbackResults(string query, FileSearchFilterDto? filters)
+    private List<IndexedChunk> BuildFallbackResults(string query, FileSearchFilterDto? filters)
     {
         var documents = _documentCatalog.Query(filters);
         if (documents.Count == 0)
         {
-            return new List<SearchResultDto>();
+            return new List<IndexedChunk>();
         }
 
         return documents
             .SelectMany(document => document.Chunks)
-            .Select(chunk => new SearchResultDto
+            .Select(chunk => new IndexedChunk
             {
                 ChunkId = chunk.ChunkId,
                 DocumentId = chunk.DocumentId,
                 Content = chunk.Content,
                 Score = 0.9,
-                Metadata = chunk.Metadata
+                Metadata = chunk.Metadata,
+                Embedding = chunk.Embedding
             })
             .ToList();
     }
 
-    private static bool MatchesFilters(SearchResultDto result, FileSearchFilterDto? filters)
+    private static bool MatchesFilters(IndexedChunk result, FileSearchFilterDto? filters)
     {
         if (filters is null)
         {
@@ -134,18 +136,84 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
             }
         }
 
+        if (filters.ContentTypes is { Count: > 0 })
+        {
+            var contentType = result.Metadata.TryGetValue("contentType", out var contentTypeValue)
+                ? contentTypeValue
+                : string.Empty;
+
+            if (!filters.ContentTypes.Contains(contentType, StringComparer.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        if (filters.Sources is { Count: > 0 })
+        {
+            var source = result.Metadata.TryGetValue("source", out var sourceValue)
+                ? sourceValue
+                : string.Empty;
+
+            if (!filters.Sources.Contains(source, StringComparer.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
         return true;
     }
 
-    private static double CalculateScore(string query, string content)
+    private static double CalculateScore(string query, float[]? queryEmbedding, IndexedChunk result)
     {
-        if (string.IsNullOrWhiteSpace(query) || string.IsNullOrWhiteSpace(content))
+        if (string.IsNullOrWhiteSpace(query) || string.IsNullOrWhiteSpace(result.Content))
         {
-            return 0.1;
+            return queryEmbedding is { Length: > 0 } && result.Embedding is { Length: > 0 }
+                ? CosineSimilarity(queryEmbedding, result.Embedding)
+                : 0.1;
         }
 
         var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var matches = terms.Count(term => content.Contains(term, StringComparison.OrdinalIgnoreCase));
-        return Math.Round(0.4 + (matches / (double)Math.Max(terms.Length, 1)) * 0.6, 2);
+        var matches = terms.Count(term => result.Content.Contains(term, StringComparison.OrdinalIgnoreCase));
+        var lexicalScore = 0.4 + (matches / (double)Math.Max(terms.Length, 1)) * 0.6;
+
+        if (queryEmbedding is not { Length: > 0 } || result.Embedding is not { Length: > 0 })
+        {
+            return Math.Round(lexicalScore, 2);
+        }
+
+        var vectorScore = CosineSimilarity(queryEmbedding, result.Embedding);
+        return Math.Round((lexicalScore * 0.4) + (vectorScore * 0.6), 4);
+    }
+
+    private static double CosineSimilarity(float[] left, float[] right)
+    {
+        var length = Math.Min(left.Length, right.Length);
+        if (length == 0)
+        {
+            return 0;
+        }
+
+        double dot = 0;
+        double leftNorm = 0;
+        double rightNorm = 0;
+
+        for (var index = 0; index < length; index++)
+        {
+            dot += left[index] * right[index];
+            leftNorm += left[index] * left[index];
+            rightNorm += right[index] * right[index];
+        }
+
+        if (leftNorm <= 0 || rightNorm <= 0)
+        {
+            return 0;
+        }
+
+        return (dot / (Math.Sqrt(leftNorm) * Math.Sqrt(rightNorm)) + 1d) / 2d;
+    }
+
+    private sealed class IndexedChunk : SearchResultDto
+    {
+        public float[]? Embedding { get; init; }
     }
 }

@@ -4,14 +4,14 @@
 
 ```bash
 dotnet restore ChatbotApi.slnx
-dotnet run --project src/Api
+.\scripts\run-api.ps1
 ```
 
 Saúde:
 
 ```bash
-curl http://localhost:5000/health
-curl http://localhost:5000/api/v1/health
+curl http://localhost:15214/health
+curl http://localhost:15214/api/v1/health
 ```
 
 ## Frontend
@@ -34,7 +34,7 @@ X-User-Role: TenantAdmin
 ## Chat não streaming
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/chat/message \
+curl -X POST http://localhost:15214/api/v1/chat/message \
   -H "Authorization: Bearer dev-token" \
   -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" \
   -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
@@ -46,7 +46,7 @@ curl -X POST http://localhost:5000/api/v1/chat/message \
 ## Chat streaming
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/chat/stream \
+curl -X POST http://localhost:15214/api/v1/chat/stream \
   -H "Authorization: Bearer dev-token" \
   -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" \
   -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
@@ -59,7 +59,7 @@ curl -X POST http://localhost:5000/api/v1/chat/stream \
 ## Upload com policy documental
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/documents/ingest \
+curl -X POST http://localhost:15214/api/v1/documents/ingest \
   -H "Authorization: Bearer dev-token" \
   -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" \
   -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
@@ -82,7 +82,7 @@ npm run test:e2e
 ## Docker
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 ## Leituras seguintes
@@ -106,7 +106,7 @@ docker-compose up --build
 
 ```bash
 # Encontrar processo usando a porta
-lsof -i :5000
+lsof -i :15214
 
 # Executar em porta diferente
 dotnet run --urls "http://localhost:5002"

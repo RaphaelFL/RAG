@@ -4,7 +4,7 @@
 
 | Arquivo | Propósito |
 |---------|-----------|
-| `ChatbotApi.sln` | Solução Visual Studio `.sln` com 7 projetos |
+| `ChatbotApi.slnx` | Solução Visual Studio `.slnx` com 7 projetos |
 | `README.md` | Overview, documentação geral do projeto |
 | `GETTING_STARTED.md` | Guia rápido: como executar e testar |
 | `SUMMARY.md` | Resumo da solução, estrutura completa |
@@ -21,8 +21,8 @@ Projeto Web API principal
 |---------|------------------|
 | `Program.cs` | Startup, DI registration, middleware setup |
 | `GlobalUsings.cs` | Global using statements (C# 10+) |
-| `appsettings.json` | Configuração padrão |
-| `appsettings.Development.json` | Config para desenvolvimento |
+| `appsettings.json` | Configuração base do backend |
+| `scripts/run-api.ps1` | Sobe a API local nas portas esperadas pela UI |
 | **Controllers/** | |
 | `ChatController.cs` | POST /chat/message, POST /chat/stream |
 | `SearchController.cs` | POST /search/retrieve |
@@ -156,7 +156,6 @@ Referência - arquivos já existentes:
 
 | Template | Versão |
 |----------|--------|
-| `README-ACP.md` | Guia para agentes ACP |
 | `architecture-template.md` | Arquitetura baseline (usado como referência) |
 | `business-rules-template.md` | Regras de negócio |
 | `http-contracts-template.md` | Contratos HTTP (seguido exatamente) |

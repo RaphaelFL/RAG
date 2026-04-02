@@ -9,4 +9,4 @@ process.env.NEXT_PUBLIC_DEFAULT_TEMPLATE_ID ??= 'grounded_answer';
 process.env.NEXT_PUBLIC_DEFAULT_TEMPLATE_VERSION ??= '1.0.0';
 process.env.NEXT_PUBLIC_DEFAULT_USE_STREAMING ??= 'true';
 process.env.NEXT_PUBLIC_DEFAULT_ALLOW_GENERAL_KNOWLEDGE ??= 'false';
-process.env.NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS ??= 'http://localhost:15214,https://localhost:15213';
+process.env.NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS ??= 'http://localhost:15214,https://localhost:15213,http://127.0.0.1:15214,https://127.0.0.1:15213,http://localhost:5000,http://127.0.0.1:5000';

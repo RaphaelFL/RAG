@@ -19,14 +19,13 @@ dotnet restore
 dotnet build
 
 # Executar API
-cd src/Api
-dotnet run
+.\scripts\run-api.ps1
 
 # Executar com HTTPS
-dotnet run --urls "https://localhost:5001"
+dotnet run --project src/Api/Chatbot.Api.csproj --urls "https://localhost:5001"
 
 # Executar em porta diferente
-dotnet run --urls "http://localhost:5555"
+dotnet run --project src/Api/Chatbot.Api.csproj --urls "http://localhost:5555"
 
 # Limpar build
 dotnet clean
@@ -36,13 +35,13 @@ dotnet clean
 
 ```bash
 # Build e run com Docker Compose
-docker-compose up --build
+docker compose up --build
 
 # Parar containers
-docker-compose down
+docker compose down
 
 # Ver logs
-docker-compose logs -f chatbot-api
+docker compose logs -f chatbot-api
 ```
 
 ### Projeto Específico
@@ -63,7 +62,7 @@ dotnet publish -c Release -o ./publish
 ### Chat - Resposta Completa
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/chat/message \
+curl -X POST http://localhost:15214/api/v1/chat/message \
   -H "Content-Type: application/json" \
   -d '{
     "sessionId": "550e8400-e29b-41d4-a716-446655440000",
@@ -76,7 +75,7 @@ curl -X POST http://localhost:5000/api/v1/chat/message \
 ### Chat - Streaming (SSE)
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/chat/stream \
+curl -X POST http://localhost:15214/api/v1/chat/stream \
   -H "Content-Type: application/json" \
   -N \
   -d '{
@@ -90,7 +89,7 @@ curl -X POST http://localhost:5000/api/v1/chat/stream \
 ### Search - Retrieval
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/search/retrieve \
+curl -X POST http://localhost:15214/api/v1/search/retrieve \
   -H "Content-Type: application/json" \
   -d '{
     "query": "Política de reembolso",
@@ -103,7 +102,7 @@ curl -X POST http://localhost:5000/api/v1/search/retrieve \
 ### Documents - Upload
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/documents/upload \
+curl -X POST http://localhost:15214/api/v1/documents/upload \
   -F "file=@documento.pdf" \
   -F "tags=financeiro,importante"
 ```
@@ -113,7 +112,7 @@ curl -X POST http://localhost:5000/api/v1/documents/upload \
 ### Health Check
 
 ```bash
-curl http://localhost:5000/health
+curl http://localhost:15214/health
 ```
 
 **Esperado**: 
@@ -125,10 +124,12 @@ curl http://localhost:5000/health
 
 ```bash
 # Exemplo com headers + body
-curl -X POST http://localhost:5000/api/v1/chat/message \
+curl -X POST http://localhost:15214/api/v1/chat/message \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "X-Tenant-Id: 550e8400-e29b-41d4-a716-446655440000" \
+  -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
+  -H "X-User-Role: TenantAdmin" \
   -H "X-Correlation-Id: abc-123-def" \
   -d '{"sessionId":"...","message":"..."}'
 ```
@@ -209,15 +210,18 @@ _logger.LogError(ex, "Erro");
 
 ### Mudar porta
 
-`src/Api/Program.cs`:
-```csharp
-var app = builder.Build();
-app.Run("http://localhost:5555");
+Padrão local atual:
+
+```powershell
+.\scripts\run-api.ps1
+# HTTP:  http://localhost:15214
+# HTTPS: https://localhost:15213
 ```
 
 Ou via linha de comando:
-```bash
-dotnet run --urls "http://localhost:5555"
+
+```csharp
+dotnet run --project src/Api/Chatbot.Api.csproj --urls "http://localhost:5555"
 ```
 
 ### Mudar logging level
@@ -245,15 +249,15 @@ policy.WithOrigins("https://seu-dominio.com")
 
 ## 🚨 Troubleshooting
 
-### "Porta 5000 já em uso"
+### "Porta 15214 já em uso"
 
 ```bash
 # Windows
-netstat -ano | findstr :5000
+netstat -ano | findstr :15214
 taskkill /PID <pid> /F
 
 # Linux/Mac
-lsof -i :5000
+lsof -i :15214
 kill -9 <pid>
 ```
 
@@ -283,16 +287,16 @@ dotnet dev-certs https --clean
 dotnet dev-certs https --trust
 
 # Acessar via HTTP (não HTTPS)
-curl http://localhost:5000/
+curl http://localhost:15214/
 ```
 
 ### "Docker port already in use"
 
 ```bash
-docker-compose down
+docker compose down
 docker ps -a
 docker rm <container_id>
-docker-compose up
+docker compose up
 ```
 
 ## 📚 Documentação Rápida
@@ -312,8 +316,8 @@ docker-compose up
 - [ ] Clone/acesse a pasta
 - [ ] Run `dotnet restore`
 - [ ] Run `dotnet build`
-- [ ] Run `dotnet run --project src/Api`
-- [ ] Teste `curl http://localhost:5000/health`
+- [ ] Run `.\scripts\run-api.ps1`
+- [ ] Teste `curl http://localhost:15214/health`
 - [ ] Teste chat endpoint com curl
 - [ ] Abra `docs/01-api-documentation.md`
 - [ ] Explore estrutura em Visual Studio / VS Code

@@ -230,17 +230,27 @@ public sealed class McpServer : IMcpServer
             return Error(id, -32003, "Administrative scope is required.");
         }
 
+        var tenantClaim = user.FindFirst("tenant_id")?.Value;
+        if (!Guid.TryParse(tenantClaim, out var tenantId))
+        {
+            return Error(id, -32003, "A valid tenant_id claim is required.");
+        }
+
         var args = GetArguments(root);
         var mode = args.TryGetProperty("mode", out var modeProperty) ? modeProperty.GetString() ?? "incremental" : "incremental";
         var documentIds = args.TryGetProperty("documentIds", out var idsProperty)
             ? idsProperty.EnumerateArray().Select(item => item.GetGuid()).ToList()
             : new List<Guid>();
+        var includeAllTenantDocuments = args.TryGetProperty("includeAllTenantDocuments", out var includeAllProperty)
+            ? includeAllProperty.GetBoolean()
+            : documentIds.Count == 0;
 
         var result = await _ingestionPipeline.ReindexAsync(new BulkReindexRequestDto
         {
             DocumentIds = documentIds,
+            IncludeAllTenantDocuments = includeAllTenantDocuments,
             Mode = mode
-        }, cancellationToken);
+        }, tenantId, cancellationToken);
 
         return new JsonRpcResponse
         {

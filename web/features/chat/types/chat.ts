@@ -2,6 +2,8 @@ export type ChatFilters = {
   documentIds?: string[];
   tags?: string[];
   categories?: string[];
+  contentTypes?: string[];
+  sources?: string[];
 };
 
 export type ChatOptions = {
@@ -17,6 +19,7 @@ export type Citation = {
   snippet: string;
   location?: {
     page?: number | null;
+    endPage?: number | null;
     section?: string | null;
   } | null;
   score: number;
@@ -29,6 +32,7 @@ export type UsageMetadata = {
   totalTokens: number;
   latencyMs: number;
   retrievalStrategy: string;
+  runtimeMetrics?: Record<string, number>;
 };
 
 export type ChatPolicy = {
@@ -96,4 +100,22 @@ export type ApiErrorPayload = {
   message: string;
   details?: Record<string, string[]>;
   traceId?: string;
+};
+
+export type RagRuntimeSettings = {
+  denseChunkSize: number;
+  denseOverlap: number;
+  narrativeChunkSize: number;
+  narrativeOverlap: number;
+  minimumChunkCharacters: number;
+  retrievalCandidateMultiplier: number;
+  retrievalMaxCandidateCount: number;
+  maxContextChunks: number;
+  minimumRerankScore: number;
+  exactMatchBoost: number;
+  titleMatchBoost: number;
+  filterMatchBoost: number;
+  retrievalCacheTtlSeconds: number;
+  chatCompletionCacheTtlSeconds: number;
+  embeddingCacheTtlHours: number;
 };

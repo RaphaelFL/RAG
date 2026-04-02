@@ -44,6 +44,18 @@ public sealed class DirectDocumentParser : IDocumentParser
         var extension = Path.GetExtension(command.FileName);
         var bytes = ms.ToArray();
 
+        if (string.Equals(extension, ".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            var extractedPdfText = PdfTextExtraction.TryExtractText(bytes);
+            if (!string.IsNullOrWhiteSpace(extractedPdfText))
+            {
+                return extractedPdfText;
+            }
+
+            var decodedPdfText = DecodeUtf8(bytes);
+            return PdfTextExtraction.LooksLikeArtifactText(decodedPdfText) ? null : decodedPdfText;
+        }
+
         return TextFirstExtensions.Contains(extension)
             ? DecodeUtf8(bytes)
             : ExtractPrintableText(bytes);

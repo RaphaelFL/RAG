@@ -50,8 +50,13 @@ public interface IIngestionPipeline
 {
     Task<UploadDocumentResponseDto> IngestAsync(IngestDocumentCommand command, CancellationToken ct);
     Task<ReindexDocumentResponseDto> ReindexAsync(Guid documentId, bool fullReindex, CancellationToken ct);
-    Task<BulkReindexResponseDto> ReindexAsync(BulkReindexRequestDto request, CancellationToken ct);
+    Task<BulkReindexResponseDto> ReindexAsync(BulkReindexRequestDto request, Guid tenantId, CancellationToken ct);
     Task<DocumentDetailsDto?> GetDocumentAsync(Guid documentId, CancellationToken ct);
+}
+
+public interface IDocumentMetadataSuggestionService
+{
+    Task<DocumentMetadataSuggestionDto> SuggestAsync(IngestDocumentCommand command, CancellationToken ct);
 }
 
 public interface IIngestionJobProcessor
@@ -109,7 +114,7 @@ public interface IFeatureFlagService
 
 public interface IChunkingStrategy
 {
-    List<DocumentChunkIndexDto> Chunk(IngestDocumentCommand command, string text);
+    List<DocumentChunkIndexDto> Chunk(IngestDocumentCommand command, DocumentTextExtractionResultDto extraction);
 }
 
 public interface ICitationAssembler
@@ -144,8 +149,40 @@ public interface IBlobStorageGateway
 public interface ISearchIndexGateway
 {
     Task IndexDocumentChunksAsync(List<DocumentChunkIndexDto> chunks, CancellationToken ct);
-    Task<List<SearchResultDto>> HybridSearchAsync(string query, int topK, FileSearchFilterDto? filters, CancellationToken ct);
+    Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct);
     Task DeleteDocumentAsync(Guid documentId, CancellationToken ct);
+}
+
+public interface IApplicationCache
+{
+    Task<T?> GetAsync<T>(string key, CancellationToken ct);
+    Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken ct);
+    Task RemoveAsync(string key, CancellationToken ct);
+}
+
+public interface IRagRuntimeSettings
+{
+    int DenseChunkSize { get; }
+    int DenseOverlap { get; }
+    int NarrativeChunkSize { get; }
+    int NarrativeOverlap { get; }
+    int MinimumChunkCharacters { get; }
+    int RetrievalCandidateMultiplier { get; }
+    int RetrievalMaxCandidateCount { get; }
+    int MaxContextChunks { get; }
+    double MinimumRerankScore { get; }
+    double ExactMatchBoost { get; }
+    double TitleMatchBoost { get; }
+    double FilterMatchBoost { get; }
+    TimeSpan RetrievalCacheTtl { get; }
+    TimeSpan ChatCompletionCacheTtl { get; }
+    TimeSpan EmbeddingCacheTtl { get; }
+}
+
+public interface IRagRuntimeAdministrationService
+{
+    RagRuntimeSettingsDto GetSettings();
+    RagRuntimeSettingsDto UpdateSettings(UpdateRagRuntimeSettingsDto request);
 }
 
 // DTOs para abstrações internas
@@ -161,6 +198,7 @@ public class DocumentTextExtractionResultDto
     public string Text { get; set; } = string.Empty;
     public string Strategy { get; set; } = string.Empty;
     public string? Provider { get; set; }
+    public List<PageExtractionDto> Pages { get; set; } = new();
 }
 
 public class PageExtractionDto
@@ -200,6 +238,8 @@ public class FileSearchFilterDto
     public List<Guid>? DocumentIds { get; set; }
     public List<string>? Tags { get; set; }
     public List<string>? Categories { get; set; }
+    public List<string>? ContentTypes { get; set; }
+    public List<string>? Sources { get; set; }
     public Guid? TenantId { get; set; }
 }
 
@@ -253,6 +293,7 @@ public class DocumentCatalogEntry
     public Guid DocumentId { get; set; }
     public Guid TenantId { get; set; }
     public string Title { get; set; } = string.Empty;
+    public string OriginalFileName { get; set; } = string.Empty;
     public string ContentType { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public int Version { get; set; }

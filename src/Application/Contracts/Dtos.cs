@@ -18,12 +18,14 @@ public class ChatFiltersDto
     public List<Guid>? DocumentIds { get; set; }
     public List<string>? Tags { get; set; }
     public List<string>? Categories { get; set; }
+    public List<string>? ContentTypes { get; set; }
+    public List<string>? Sources { get; set; }
 }
 
 public class ChatOptionsDto
 {
     public int MaxCitations { get; set; } = 5;
-    public bool AllowGeneralKnowledge { get; set; } = false;
+    public bool AllowGeneralKnowledge { get; set; } = true;
     public bool SemanticRanking { get; set; } = true;
 }
 
@@ -54,6 +56,7 @@ public class CitationDto
 public class LocationDto
 {
     public int? Page { get; set; }
+    public int? EndPage { get; set; }
     public string? Section { get; set; }
 }
 
@@ -65,6 +68,7 @@ public class UsageMetadataDto
     public int TotalTokens { get; set; }
     public long LatencyMs { get; set; }
     public string RetrievalStrategy { get; set; } = "hybrid";
+    public Dictionary<string, long> RuntimeMetrics { get; set; } = new();
 }
 
 public class ChatPolicyDto
@@ -137,6 +141,16 @@ public class UploadDocumentResponseDto
     public DateTime CreatedAtUtc { get; set; }
 }
 
+public class DocumentMetadataSuggestionDto
+{
+    public string SuggestedTitle { get; set; } = string.Empty;
+    public string? SuggestedCategory { get; set; }
+    public List<string> SuggestedCategories { get; set; } = new();
+    public List<string> SuggestedTags { get; set; } = new();
+    public string Strategy { get; set; } = string.Empty;
+    public string PreviewText { get; set; } = string.Empty;
+}
+
 /// <summary>
 /// DTO para reindexação
 /// </summary>
@@ -157,6 +171,7 @@ public class ReindexDocumentResponseDto
 public class BulkReindexRequestDto
 {
     public List<Guid> DocumentIds { get; set; } = new();
+    public bool IncludeAllTenantDocuments { get; set; }
     public string Mode { get; set; } = "incremental";
     public string? Reason { get; set; }
     public string? ForceEmbeddingModel { get; set; }
@@ -167,6 +182,7 @@ public class BulkReindexResponseDto
     public bool Accepted { get; set; }
     public Guid JobId { get; set; }
     public string Mode { get; set; } = "incremental";
+    public int DocumentCount { get; set; }
 }
 
 public class DocumentDetailsDto
@@ -202,6 +218,8 @@ public class RetrievalQueryDto
     public List<Guid>? DocumentIds { get; set; }
     public List<string>? Tags { get; set; }
     public List<string>? Categories { get; set; }
+    public List<string>? ContentTypes { get; set; }
+    public List<string>? Sources { get; set; }
     public bool SemanticRanking { get; set; } = true;
 }
 
@@ -225,6 +243,46 @@ public class SearchFiltersDto
     public List<Guid>? DocumentIds { get; set; }
     public List<string>? Tags { get; set; }
     public List<string>? Categories { get; set; }
+    public List<string>? ContentTypes { get; set; }
+    public List<string>? Sources { get; set; }
+}
+
+public class RagRuntimeSettingsDto
+{
+    public int DenseChunkSize { get; set; }
+    public int DenseOverlap { get; set; }
+    public int NarrativeChunkSize { get; set; }
+    public int NarrativeOverlap { get; set; }
+    public int MinimumChunkCharacters { get; set; }
+    public int RetrievalCandidateMultiplier { get; set; }
+    public int RetrievalMaxCandidateCount { get; set; }
+    public int MaxContextChunks { get; set; }
+    public double MinimumRerankScore { get; set; }
+    public double ExactMatchBoost { get; set; }
+    public double TitleMatchBoost { get; set; }
+    public double FilterMatchBoost { get; set; }
+    public int RetrievalCacheTtlSeconds { get; set; }
+    public int ChatCompletionCacheTtlSeconds { get; set; }
+    public int EmbeddingCacheTtlHours { get; set; }
+}
+
+public class UpdateRagRuntimeSettingsDto
+{
+    public int DenseChunkSize { get; set; }
+    public int DenseOverlap { get; set; }
+    public int NarrativeChunkSize { get; set; }
+    public int NarrativeOverlap { get; set; }
+    public int MinimumChunkCharacters { get; set; }
+    public int RetrievalCandidateMultiplier { get; set; }
+    public int RetrievalMaxCandidateCount { get; set; }
+    public int MaxContextChunks { get; set; }
+    public double MinimumRerankScore { get; set; }
+    public double ExactMatchBoost { get; set; }
+    public double TitleMatchBoost { get; set; }
+    public double FilterMatchBoost { get; set; }
+    public int RetrievalCacheTtlSeconds { get; set; }
+    public int ChatCompletionCacheTtlSeconds { get; set; }
+    public int EmbeddingCacheTtlHours { get; set; }
 }
 
 public class SearchQueryResponseDto
@@ -250,5 +308,6 @@ public class RetrievedChunkDto
     public string Content { get; set; } = string.Empty;
     public double Score { get; set; }
     public int PageNumber { get; set; }
+    public int EndPageNumber { get; set; }
     public string? Section { get; set; }
 }

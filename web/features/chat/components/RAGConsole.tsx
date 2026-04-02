@@ -10,25 +10,33 @@ import { useChat } from '@/features/chat/hooks/useChat';
 import { useDocumentUploads } from '@/features/documents/hooks/useDocumentUploads';
 import { publicRuntimeDefaults } from '@/lib/publicEnv';
 import type { ChatMessageModel, Citation } from '@/features/chat/types/chat';
+import type { DocumentMetadataSuggestion } from '@/features/documents/types/documents';
 import type { UserRole } from '@/types/app';
-
-const USER_ROLES: UserRole[] = ['TenantUser', 'Analyst', 'TenantAdmin', 'PlatformAdmin', 'McpClient'];
 
 export function RAGConsole() {
   const { useDeferredValue, useState } = React;
-  const { environment, isReady, setEnvironment } = useRuntimeEnvironment();
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  const { environment } = useRuntimeEnvironment();
+  const [activeSessionId, setActiveSessionId] = useState('');
   const [message, setMessage] = useState('');
-  const [templateId, setTemplateId] = useState(publicRuntimeDefaults.templateId);
-  const [templateVersion, setTemplateVersion] = useState(publicRuntimeDefaults.templateVersion);
-  const [tagsInput, setTagsInput] = useState('');
-  const [categoriesInput, setCategoriesInput] = useState('');
-  const [useStreaming, setUseStreaming] = useState(publicRuntimeDefaults.useStreaming);
-  const [allowGeneralKnowledge, setAllowGeneralKnowledge] = useState(publicRuntimeDefaults.allowGeneralKnowledge);
+  const [templateId] = useState(publicRuntimeDefaults.templateId);
+  const [templateVersion] = useState(publicRuntimeDefaults.templateVersion);
+  const useStreaming = publicRuntimeDefaults.useStreaming;
 
-  const chat = useChat({ environment, sessionId });
-  const documents = useDocumentUploads(environment);
+  const chat = useChat({ environment, sessionId: activeSessionId });
+  const documents = useDocumentUploads(environment, activeSessionId);
   const permissions = getRolePermissions(environment.userRole);
+  const indexedConversationDocuments = React.useMemo(
+    () => documents.uploads.filter((entry) => entry.documentId && entry.status === 'Indexed'),
+    [documents.uploads]
+  );
+  const conversationDocumentIds = React.useMemo(
+    () => indexedConversationDocuments.map((entry) => entry.documentId as string),
+    [indexedConversationDocuments]
+  );
+  const pendingConversationDocuments = React.useMemo(
+    () => documents.uploads.filter((entry) => !entry.documentId || entry.status !== 'Indexed'),
+    [documents.uploads]
+  );
 
   const deferredAssistantCount = useDeferredValue(chat.assistantMessages.length);
   let submitLabel = 'Enviar pergunta';
@@ -38,22 +46,32 @@ export function RAGConsole() {
     submitLabel = 'Transmitindo...';
   }
 
+  React.useEffect(() => {
+    if (!activeSessionId) {
+      setActiveSessionId(createSessionId());
+    }
+  }, [activeSessionId]);
+
   async function submitMessage() {
     if (!message.trim()) {
       return;
+    }
+
+    const resolvedSessionId = activeSessionId || crypto.randomUUID();
+    if (resolvedSessionId !== activeSessionId) {
+      setActiveSessionId(resolvedSessionId);
     }
 
     const currentMessage = message;
     setMessage('');
 
     await chat.sendMessage({
+      sessionId: resolvedSessionId,
       message: currentMessage,
       templateId,
       templateVersion,
-      categories: splitCsv(categoriesInput),
-      tags: splitCsv(tagsInput),
-      useStreaming,
-      allowGeneralKnowledge
+      documentIds: conversationDocumentIds,
+      useStreaming
     });
   }
 
@@ -62,12 +80,8 @@ export function RAGConsole() {
     void submitMessage();
   }
 
-  async function handleLoadSession() {
-    await chat.hydrateSession();
-  }
-
   function handleNewSession() {
-    setSessionId(crypto.randomUUID());
+    setActiveSessionId(createSessionId());
     chat.resetConversation();
   }
 
@@ -80,102 +94,18 @@ export function RAGConsole() {
           Frontend do chatbot corporativo com streaming SSE, upload documental, citations auditaveis
           e historico de sessao isolado por tenant.
         </p>
+        <div className="hero-actions">
+          <button className="button ghost" onClick={handleNewSession} type="button">
+            Nova sessao
+          </button>
+          <a className="button secondary" href="/configuracoes-de-administrador">
+            Configuracoes de administrador
+          </a>
+        </div>
+        <p className="field-hint">A sessao da conversa permanece interna e nao e exibida na interface principal.</p>
       </section>
 
-      <section className="console-grid">
-        <aside className="console-sidebar">
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <h2>Ambiente</h2>
-                <p>O frontend conversa apenas com a API HTTP do backend.</p>
-              </div>
-              <span className={clsx('badge', isReady ? 'badge-success' : 'badge-warning')}>
-                {isReady ? 'Pronto' : 'Carregando'}
-              </span>
-            </div>
-
-            <div className="field-grid">
-              <label>
-                <span>API Base URL</span>
-                <input
-                  value={environment.apiBaseUrl}
-                  onChange={(event) => setEnvironment((current) => ({ ...current, apiBaseUrl: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Bearer Token</span>
-                <input
-                  value={environment.token}
-                  onChange={(event) => setEnvironment((current) => ({ ...current, token: event.target.value }))}
-                  placeholder="Cole um bearer token valido"
-                />
-                <small className="field-hint">Nao persistido no navegador. Permanece apenas nesta sessao em memoria.</small>
-              </label>
-              <label>
-                <span>Tenant Id</span>
-                <input
-                  value={environment.tenantId}
-                  onChange={(event) => setEnvironment((current) => ({ ...current, tenantId: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>User Id</span>
-                <input
-                  value={environment.userId}
-                  onChange={(event) => setEnvironment((current) => ({ ...current, userId: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Role</span>
-                <select
-                  value={environment.userRole}
-                  onChange={(event) => setEnvironment((current) => ({ ...current, userRole: event.target.value as UserRole }))}
-                >
-                  {USER_ROLES.map((role) => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <h2>Sessao</h2>
-                <p>Historico persistido pelo backend por tenant.</p>
-              </div>
-            </div>
-
-            <label>
-              <span>Session Id</span>
-              <input value={sessionId} onChange={(event) => setSessionId(event.target.value)} />
-            </label>
-
-            <div className="button-row">
-              <button className="button secondary" onClick={handleLoadSession} type="button">
-                Carregar sessao
-              </button>
-              <button className="button ghost" onClick={handleNewSession} type="button">
-                Nova sessao
-              </button>
-            </div>
-          </div>
-
-          <UploadPanel
-            uploads={documents.uploads}
-            error={documents.error}
-            onUpload={documents.submitUpload}
-            onReindex={documents.triggerReindex}
-            canUpload={permissions.canUpload}
-            canIncrementalReindex={permissions.canIncrementalReindex}
-            canFullReindex={permissions.canFullReindex}
-            userRole={environment.userRole}
-          />
-        </aside>
-
-        <section className="console-main">
+      <section className="console-main console-main-standalone">
           <div className="panel panel-chat">
             <div className="panel-header panel-header-tight">
               <div>
@@ -198,11 +128,25 @@ export function RAGConsole() {
 
             {chat.error ? <div className="error-banner">{chat.error}</div> : null}
 
+            <UploadPanel
+              uploads={documents.uploads}
+              error={documents.error}
+              bulkReindex={documents.lastBulkReindex}
+              onSuggestMetadata={documents.suggestUploadMetadata}
+              onUpload={documents.submitUpload}
+              onReindex={documents.triggerReindex}
+              onTenantFullReindex={documents.triggerTenantFullReindex}
+              canUpload={permissions.canUpload}
+              canIncrementalReindex={permissions.canIncrementalReindex}
+              canFullReindex={permissions.canFullReindex}
+              userRole={environment.userRole}
+            />
+
             <div className="messages-panel">
               {chat.messages.length === 0 ? (
                 <div className="empty-state">
                   <h3>Sem mensagens</h3>
-                  <p>Envie uma pergunta grounded, carregue uma sessao existente ou indexe documentos.</p>
+                  <p>Envie uma pergunta grounded ou indexe documentos para esta conversa atual.</p>
                 </div>
               ) : (
                 chat.messages.map((entry) => <MessageCard key={entry.id} message={entry} />)
@@ -210,43 +154,13 @@ export function RAGConsole() {
             </div>
 
             <form className="composer" onSubmit={handleSubmit}>
-              <div className="field-grid two-columns">
-                <label>
-                  <span>Template</span>
-                  <select value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
-                    <option value="grounded_answer">grounded_answer</option>
-                    <option value="comparative_answer">comparative_answer</option>
-                    <option value="document_summary">document_summary</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Versao</span>
-                  <input value={templateVersion} onChange={(event) => setTemplateVersion(event.target.value)} />
-                </label>
-                <label>
-                  <span>Categorias</span>
-                  <input value={categoriesInput} onChange={(event) => setCategoriesInput(event.target.value)} placeholder="financeiro,politicas" />
-                </label>
-                <label>
-                  <span>Tags</span>
-                  <input value={tagsInput} onChange={(event) => setTagsInput(event.target.value)} placeholder="reembolso,portal" />
-                </label>
-              </div>
 
-              <div className="toggle-row">
-                <label className="toggle">
-                  <input type="checkbox" checked={useStreaming} onChange={(event) => setUseStreaming(event.target.checked)} />
-                  <span>Streaming SSE</span>
-                </label>
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={allowGeneralKnowledge}
-                    onChange={(event) => setAllowGeneralKnowledge(event.target.checked)}
-                  />
-                  <span>Permitir conhecimento geral</span>
-                </label>
-              </div>
+              <p className="field-hint">
+                {buildConversationGroundingHint({
+                  indexedDocumentCount: conversationDocumentIds.length,
+                  pendingDocumentCount: pendingConversationDocuments.length
+                })}
+              </p>
 
               <label>
                 <span>Pergunta</span>
@@ -268,10 +182,13 @@ export function RAGConsole() {
               </div>
             </form>
           </div>
-        </section>
       </section>
     </main>
   );
+}
+
+function createSessionId() {
+  return crypto.randomUUID();
 }
 
 export function MessageCard({ message }: Readonly<{ message: ChatMessageModel }>) {
@@ -287,7 +204,7 @@ export function MessageCard({ message }: Readonly<{ message: ChatMessageModel }>
 
       <div className="message-markdown">
         <ReactMarkdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
-          {message.content || '_Aguardando conteudo..._'}
+          {message.content || (message.isStreaming ? '_Gerando resposta..._' : '_Sem conteudo._')}
         </ReactMarkdown>
       </div>
 
@@ -305,13 +222,19 @@ export function MessageCard({ message }: Readonly<{ message: ChatMessageModel }>
           <span>{message.usage.totalTokens} tokens</span>
           <span>{message.usage.latencyMs} ms</span>
           <span>{message.usage.retrievalStrategy}</span>
+          {message.usage.runtimeMetrics ? Object.entries(message.usage.runtimeMetrics).map(([key, value]) => (
+            <span key={key}>{key}: {value}</span>
+          )) : null}
         </footer>
       ) : null}
     </article>
   );
 }
 
+
 function CitationCard({ citation }: Readonly<{ citation: Citation }>) {
+  const pageLabel = formatCitationPageRange(citation);
+
   return (
     <article className="citation-card">
       <header>
@@ -321,8 +244,8 @@ function CitationCard({ citation }: Readonly<{ citation: Citation }>) {
       <p>{citation.snippet}</p>
       <footer>
         <span>score {citation.score.toFixed(2)}</span>
-        {citation.location?.page ? <span>p. {citation.location.page}</span> : null}
-        {citation.location?.section ? <span>{citation.location.section}</span> : null}
+        {pageLabel ? <span>{pageLabel}</span> : null}
+        {citation.location?.section ? <span>secao {citation.location.section}</span> : null}
       </footer>
     </article>
   );
@@ -331,8 +254,11 @@ function CitationCard({ citation }: Readonly<{ citation: Citation }>) {
 function UploadPanel({
   uploads,
   error,
+  bulkReindex,
+  onSuggestMetadata,
   onUpload,
   onReindex,
+  onTenantFullReindex,
   canUpload,
   canIncrementalReindex,
   canFullReindex,
@@ -340,10 +266,14 @@ function UploadPanel({
 }: Readonly<{
   uploads: Array<{
     localId: string;
+    conversationSessionId: string;
     fileName: string;
     documentId?: string;
     ingestionJobId?: string;
     status: string;
+    logicalTitle?: string;
+    category?: string;
+    tags?: string[];
     error?: string;
     details?: {
       title: string;
@@ -352,6 +282,8 @@ function UploadPanel({
     };
   }>;
   error: string | null;
+  bulkReindex: ReturnType<typeof useDocumentUploads>['lastBulkReindex'];
+  onSuggestMetadata: (file: File) => Promise<DocumentMetadataSuggestion>;
   onUpload: (input: {
     file: File;
     title?: string;
@@ -361,41 +293,13 @@ function UploadPanel({
     source?: string;
   }) => Promise<void>;
   onReindex: (documentId: string, fullReindex: boolean) => Promise<void>;
+  onTenantFullReindex: () => Promise<void>;
   canUpload: boolean;
   canIncrementalReindex: boolean;
   canFullReindex: boolean;
   userRole: UserRole;
 }>) {
-  const { useState } = React;
-  const [file, setFile] = useState<File | null>(null);
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('');
-  const [tags, setTags] = useState('');
-
-  async function submitUploadForm() {
-    if (!file) {
-      return;
-    }
-
-    await onUpload({
-      file,
-      title,
-      category,
-      categories: category ? [category] : [],
-      tags: splitCsv(tags),
-      source: 'frontend-console'
-    });
-
-    setFile(null);
-    setTitle('');
-    setCategory('');
-    setTags('');
-  }
-
-  function handleSubmit(event: { preventDefault: () => void }) {
-    event.preventDefault();
-    void submitUploadForm();
-  }
+  const uploadDraft = useUploadDraft(onSuggestMetadata, onUpload);
 
   function handleIncrementalReindex(documentId: string) {
     return onReindex(documentId, false);
@@ -406,11 +310,11 @@ function UploadPanel({
   }
 
   return (
-    <div className="panel">
+    <div className="panel panel-embedded conversation-document-panel">
       <div className="panel-header">
         <div>
-          <h2>Documentos</h2>
-          <p>Upload, polling de status e reindexacao por papel.</p>
+          <h2>Documentos da conversa</h2>
+          <p>Analise o arquivo, revise os campos sugeridos e confirme o envio dentro desta sessao.</p>
         </div>
       </div>
 
@@ -418,67 +322,139 @@ function UploadPanel({
         Papel atual: <strong>{userRole}</strong>. Upload {canUpload ? 'liberado' : 'bloqueado'}; reindex incremental {canIncrementalReindex ? 'liberado' : 'bloqueado'}; reindex full {canFullReindex ? 'liberado' : 'bloqueado'}.
       </div>
 
-      {error ? <div className="error-banner">{error}</div> : null}
+      {canFullReindex ? (
+        <div className="button-row compact">
+          <button className="button secondary" onClick={() => void onTenantFullReindex()} type="button">
+            Reindex full do tenant
+          </button>
+          {bulkReindex ? <span className="field-hint">Job {bulkReindex.jobId} enfileirado para {bulkReindex.documentCount} documento(s).</span> : null}
+        </div>
+      ) : null}
 
-      {canUpload ? (
-        <form className="upload-form" onSubmit={handleSubmit}>
-          <label>
-            <span>Arquivo</span>
-            <input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-          </label>
+      {error ? <div className="error-banner">{error}</div> : null}
+      {uploadDraft.analysisError ? <div className="error-banner">{uploadDraft.analysisError}</div> : null}
+
+      <UploadDraftForm canUpload={canUpload} uploadDraft={uploadDraft} />
+
+      <UploadHistoryList
+        uploads={uploads}
+        onFullReindex={handleFullReindex}
+        onIncrementalReindex={handleIncrementalReindex}
+        canIncrementalReindex={canIncrementalReindex}
+        canFullReindex={canFullReindex}
+      />
+    </div>
+  );
+}
+
+function UploadDraftForm({
+  canUpload,
+  uploadDraft
+}: Readonly<{
+  canUpload: boolean;
+  uploadDraft: ReturnType<typeof useUploadDraft>;
+}>) {
+  if (!canUpload) {
+    return (
+      <div className="empty-state compact">
+        <h3>Upload indisponivel</h3>
+        <p>Seu papel atual nao possui permissao padrao para iniciar ingestao documental.</p>
+      </div>
+    );
+  }
+
+  return (
+    <form className="upload-form" onSubmit={uploadDraft.handleSubmit}>
+      <label>
+        <span>Arquivo</span>
+        <input key={uploadDraft.fileInputKey} type="file" onChange={uploadDraft.handleFileChange} />
+      </label>
+
+      {uploadDraft.file ? <UploadAnalysisBanner uploadDraft={uploadDraft} /> : null}
+
+      {uploadDraft.file ? (
+        <div className="field-grid two-columns">
           <label>
             <span>Titulo logico</span>
-            <input value={title} onChange={(event) => setTitle(event.target.value)} />
+            <input
+              value={uploadDraft.title}
+              onChange={(event) => uploadDraft.setTitle(event.target.value)}
+              placeholder="Titulo sugerido pela analise"
+            />
           </label>
           <label>
             <span>Categoria</span>
-            <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="politicas" />
+            <input
+              value={uploadDraft.category}
+              onChange={(event) => uploadDraft.setCategory(event.target.value)}
+              placeholder="Categoria principal"
+            />
           </label>
-          <label>
+          <label className="field-span-2">
             <span>Tags</span>
-            <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="financeiro,reembolso" />
+            <input
+              value={uploadDraft.tags}
+              onChange={(event) => uploadDraft.setTags(event.target.value)}
+              placeholder="tag1,tag2"
+            />
           </label>
-          <button className="button primary" disabled={!file} type="submit">
-            Enviar documento
-          </button>
-        </form>
-      ) : (
-        <div className="empty-state compact">
-          <h3>Upload indisponivel</h3>
-          <p>Seu papel atual nao possui permissao padrao para iniciar ingestao documental.</p>
         </div>
-      )}
+      ) : null}
 
-      <div className="upload-list">
-        {uploads.length === 0 ? (
-          <p className="muted-copy">Nenhum documento enviado nesta sessao do navegador.</p>
-        ) : (
-          uploads.map((entry) => (
-            <article key={entry.localId} className="upload-item">
-              <div>
-                <strong>{entry.details?.title ?? entry.fileName}</strong>
-                <p>
-                  status: {entry.status}
-                  {entry.ingestionJobId ? ` · job ${entry.ingestionJobId}` : ''}
-                  {entry.details?.version ? ` · v${entry.details.version}` : ''}
-                </p>
-                {entry.error ? <span className="upload-error">{entry.error}</span> : null}
-              </div>
-              {entry.documentId ? (
-                <UploadActions
-                  documentId={entry.documentId}
-                  onFullReindex={handleFullReindex}
-                  onIncrementalReindex={handleIncrementalReindex}
-                  canIncrementalReindex={canIncrementalReindex}
-                  canFullReindex={canFullReindex}
-                />
-              ) : null}
-            </article>
-          ))
-        )}
+      <div className="button-row compact">
+        <button className="button primary" disabled={!uploadDraft.file || uploadDraft.isAnalyzing} type="submit">
+          Confirmar envio
+        </button>
       </div>
+    </form>
+  );
+}
+
+function UploadAnalysisBanner({
+  uploadDraft
+}: Readonly<{
+  uploadDraft: ReturnType<typeof useUploadDraft>;
+}>) {
+  const analysisHint = getUploadAnalysisHint(uploadDraft.isAnalyzing, uploadDraft.analysisStrategy);
+  return (
+    <div className="info-banner analysis-banner">
+      <strong>{uploadDraft.isAnalyzing ? 'Analisando documento...' : 'Sugestao automatica pronta para revisao.'}</strong>
+      <span className="field-hint">{analysisHint}</span>
+      {uploadDraft.previewText ? <span className="analysis-preview">Trecho analisado: {uploadDraft.previewText}</span> : null}
     </div>
   );
+}
+
+function getUploadAnalysisHint(isAnalyzing: boolean, analysisStrategy: string) {
+  if (isAnalyzing) {
+    return 'Extraindo conteudo e sugerindo titulo logico, categoria e tags.';
+  }
+
+  if (analysisStrategy) {
+    return `Estrategia: ${analysisStrategy}`;
+  }
+
+  return 'Revise a sugestao automatica e confirme o envio.';
+}
+
+function buildConversationGroundingHint({
+  indexedDocumentCount,
+  pendingDocumentCount
+}: Readonly<{
+  indexedDocumentCount: number;
+  pendingDocumentCount: number;
+}>) {
+  if (indexedDocumentCount === 0 && pendingDocumentCount === 0) {
+    return 'Sem documentos vinculados a esta conversa. O orquestrador decide automaticamente quando responder com conhecimento geral.';
+  }
+
+  const indexedLabel = `${indexedDocumentCount} documento(s) indexado(s) vinculado(s) a esta conversa`;
+  const pendingLabel = pendingDocumentCount > 0
+    ? ` e ${pendingDocumentCount} ainda em processamento`
+    : '';
+  const generalLabel = '. O backend combina RAG, resposta direta ou modo hibrido conforme a evidencia recuperada.';
+
+  return `${indexedLabel}${pendingLabel}${generalLabel}`;
 }
 
 function UploadActions({
@@ -531,4 +507,265 @@ function splitCsv(value: string) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function readableClientError(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return 'Erro inesperado.';
+}
+
+function useUploadDraft(
+  onSuggestMetadata: (file: File) => Promise<DocumentMetadataSuggestion>,
+  onUpload: (input: {
+    file: File;
+    title?: string;
+    category?: string;
+    categories?: string[];
+    tags?: string[];
+    source?: string;
+  }) => Promise<void>
+) {
+  const [file, setFile] = React.useState<File | null>(null);
+  const [fileInputKey, setFileInputKey] = React.useState(0);
+  const [title, setTitle] = React.useState('');
+  const [category, setCategory] = React.useState('');
+  const [tags, setTags] = React.useState('');
+  const [isAnalyzing, setIsAnalyzing] = React.useState(false);
+  const [analysisError, setAnalysisError] = React.useState<string | null>(null);
+  const [analysisStrategy, setAnalysisStrategy] = React.useState('');
+  const [previewText, setPreviewText] = React.useState('');
+
+  function resetDraft() {
+    setFile(null);
+    setFileInputKey((current) => current + 1);
+    setTitle('');
+    setCategory('');
+    setTags('');
+    setAnalysisError(null);
+    setAnalysisStrategy('');
+    setPreviewText('');
+  }
+
+  function applySuggestion(suggestion: DocumentMetadataSuggestion) {
+    setTitle(suggestion.suggestedTitle);
+    setCategory(suggestion.suggestedCategory ?? suggestion.suggestedCategories[0] ?? '');
+    setTags(suggestion.suggestedTags.join(','));
+    setAnalysisStrategy(suggestion.strategy);
+    setPreviewText(suggestion.previewText);
+  }
+
+  async function handleFileChange(event: { target: { files: FileList | null } }) {
+    const nextFile = event.target.files?.[0] ?? null;
+    setFile(nextFile);
+    setAnalysisError(null);
+    setAnalysisStrategy('');
+    setPreviewText('');
+
+    if (!nextFile) {
+      setTitle('');
+      setCategory('');
+      setTags('');
+      return;
+    }
+
+    setIsAnalyzing(true);
+
+    try {
+      const suggestion = await onSuggestMetadata(nextFile);
+      applySuggestion(suggestion);
+    } catch (error) {
+      setAnalysisError(readableClientError(error));
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
+  async function submitUploadForm() {
+    if (!file) {
+      return;
+    }
+
+    await onUpload({
+      file,
+      title,
+      category,
+      categories: category ? [category] : [],
+      tags: splitCsv(tags),
+      source: 'frontend-console'
+    });
+
+    resetDraft();
+  }
+
+  function handleSubmit(event: { preventDefault: () => void }) {
+    event.preventDefault();
+    void submitUploadForm();
+  }
+
+  return {
+    file,
+    fileInputKey,
+    title,
+    setTitle,
+    category,
+    setCategory,
+    tags,
+    setTags,
+    isAnalyzing,
+    analysisError,
+    analysisStrategy,
+    previewText,
+    handleFileChange,
+    handleSubmit
+  };
+}
+
+function formatCitationPageRange(citation: Citation) {
+  const startPage = citation.location?.page;
+  const endPage = citation.location?.endPage;
+
+  if (!startPage) {
+    return null;
+  }
+
+  if (endPage && endPage !== startPage) {
+    return `paginas ${startPage}-${endPage}`;
+  }
+
+  return `pagina ${startPage}`;
+}
+
+function UploadHistoryList({
+  uploads,
+  onIncrementalReindex,
+  onFullReindex,
+  canIncrementalReindex,
+  canFullReindex
+}: Readonly<{
+  uploads: Array<{
+    localId: string;
+    conversationSessionId: string;
+    fileName: string;
+    documentId?: string;
+    ingestionJobId?: string;
+    status: string;
+    logicalTitle?: string;
+    category?: string;
+    tags?: string[];
+    error?: string;
+    details?: {
+      title: string;
+      version: number;
+      lastJobId?: string | null;
+    };
+  }>;
+  onIncrementalReindex: (documentId: string) => Promise<void>;
+  onFullReindex: (documentId: string) => Promise<void>;
+  canIncrementalReindex: boolean;
+  canFullReindex: boolean;
+}>) {
+  if (uploads.length === 0) {
+    return (
+      <div className="empty-state compact">
+        <h3>Sem documentos</h3>
+        <p>Nenhum documento foi enviado para esta sessao ainda.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="upload-history-list">
+      {uploads.map((upload) => (
+        <UploadStatusEntry
+          key={upload.localId}
+          upload={upload}
+          onIncrementalReindex={onIncrementalReindex}
+          onFullReindex={onFullReindex}
+          canIncrementalReindex={canIncrementalReindex}
+          canFullReindex={canFullReindex}
+        />
+      ))}
+    </div>
+  );
+}
+
+function UploadStatusEntry({
+  upload,
+  onIncrementalReindex,
+  onFullReindex,
+  canIncrementalReindex,
+  canFullReindex
+}: Readonly<{
+  upload: {
+    localId: string;
+    conversationSessionId: string;
+    fileName: string;
+    documentId?: string;
+    ingestionJobId?: string;
+    status: string;
+    logicalTitle?: string;
+    category?: string;
+    tags?: string[];
+    error?: string;
+    details?: {
+      title: string;
+      version: number;
+      lastJobId?: string | null;
+    };
+  };
+  onIncrementalReindex: (documentId: string) => Promise<void>;
+  onFullReindex: (documentId: string) => Promise<void>;
+  canIncrementalReindex: boolean;
+  canFullReindex: boolean;
+}>) {
+  const statusLabel = upload.status;
+  const statusColor = getStatusColor(upload.status);
+  const hasDetails = upload.details !== undefined;
+  const hasActions = upload.documentId && (canIncrementalReindex || canFullReindex);
+
+  return (
+    <article className="upload-status-entry">
+      <header>
+        <strong>{upload.logicalTitle ?? upload.fileName}</strong>
+        <span className={clsx('badge', statusColor)}>{statusLabel}</span>
+      </header>
+      {upload.error ? <p className="error-details">{upload.error}</p> : null}
+      <p className="field-hint">
+        {upload.category ? `${upload.category} | ` : ''}
+        {upload.tags?.join(', ')}
+      </p>
+      {hasDetails && upload.details ? (
+        <p className="field-hint">
+          {upload.details.title} v{upload.details.version}
+        </p>
+      ) : null}
+      {hasActions ? (
+        <UploadActions
+          documentId={upload.documentId as string}
+          onIncrementalReindex={onIncrementalReindex}
+          onFullReindex={onFullReindex}
+          canIncrementalReindex={canIncrementalReindex}
+          canFullReindex={canFullReindex}
+        />
+      ) : null}
+    </article>
+  );
+}
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case 'Requested':
+    case 'Queued':
+    case 'Processing':
+      return 'badge-warning';
+    case 'Indexed':
+      return 'badge-success';
+    case 'Failed':
+      return 'badge-danger';
+    default:
+      return 'badge-neutral';
+  }
 }

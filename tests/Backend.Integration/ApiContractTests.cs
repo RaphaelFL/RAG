@@ -19,7 +19,17 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
 
     public ApiContractTests(WebApplicationFactory<Program> factory)
     {
-        _factory = factory.WithWebHostBuilder(_ => { });
+        _factory = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ProviderExecutionModeOptions:AllowMockProviders"] = "true",
+                    ["ProviderExecutionModeOptions:AllowInMemoryInfrastructure"] = "true"
+                });
+            });
+        });
     }
 
     [Fact]
@@ -134,6 +144,27 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task SuggestMetadataEndpoint_ShouldInferTitleCategoryAndTags()
+    {
+        using var client = _factory.CreateClient();
+        AddHeaders(client, "12121212-1212-1212-1212-121212121212");
+
+        var form = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(Encoding.UTF8.GetBytes("ARQUITETURA DE INTEGRACAO CORPORATIVA\nAPIs e servicos de integracao com sistema legado."));
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("text/plain");
+        form.Add(fileContent, "file", "arquitetura.txt");
+
+        var response = await client.PostAsync("/api/v1/documents/suggest-metadata", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await response.Content.ReadFromJsonAsync<DocumentMetadataSuggestionDto>(JsonOptions);
+        payload.Should().NotBeNull();
+        payload!.SuggestedTitle.Should().NotBeNullOrWhiteSpace();
+        payload.SuggestedCategory.Should().Be("arquitetura");
+        payload.SuggestedTags.Should().Contain(tag => tag.Equals("arquitetura", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task ReindexEndpoint_ShouldReturn403_WhenRoleIsNotAdministrative()
     {
         using var client = _factory.CreateClient();
@@ -195,6 +226,8 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
         payload.Should().Contain("event: delta");
         payload.Should().Contain("event: citation");
         payload.Should().Contain("event: completed");
+        payload.Should().Contain("\"answerId\"");
+        payload.Should().Contain("\"text\"");
     }
 
     [Fact]
@@ -265,6 +298,36 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
         payload.Should().NotBeNull();
         payload!.Status.Should().Be("ReindexPending");
         payload.JobId.Should().NotBeNull();
+
+        var document = await WaitForDocumentStatusAsync(client, uploadPayload.DocumentId, "Indexed");
+        document.Version.Should().BeGreaterThan(1);
+        document.LastJobId.Should().Be(payload.JobId);
+    }
+
+    [Fact]
+    public async Task BulkReindexEndpoint_ShouldIncludeTenantDocuments_AndEventuallyRestoreIndexedStatus()
+    {
+        using var client = _factory.CreateClient();
+        AddHeaders(client, "81818181-8181-8181-8181-818181818181", role: "TenantAdmin");
+
+        var uploadResponse = await UploadTextFileAsync(client, "manual-bulk.txt", "Manual operacional para validacao do bulk reindex.");
+        var uploadPayload = await uploadResponse.Content.ReadFromJsonAsync<UploadDocumentResponseDto>(JsonOptions);
+        uploadPayload.Should().NotBeNull();
+        await WaitForDocumentStatusAsync(client, uploadPayload!.DocumentId, "Indexed");
+
+        var response = await client.PostAsJsonAsync("/api/v1/documents/reindex", new BulkReindexRequestDto
+        {
+            IncludeAllTenantDocuments = true,
+            Mode = "full",
+            Reason = "integration-test"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var payload = await response.Content.ReadFromJsonAsync<BulkReindexResponseDto>(JsonOptions);
+        payload.Should().NotBeNull();
+        payload!.DocumentCount.Should().BeGreaterThan(0);
+        payload.Mode.Should().Be("full");
+        payload.JobId.Should().NotBe(Guid.Empty);
 
         var document = await WaitForDocumentStatusAsync(client, uploadPayload.DocumentId, "Indexed");
         document.Version.Should().BeGreaterThan(1);

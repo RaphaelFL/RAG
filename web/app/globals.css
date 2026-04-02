@@ -96,6 +96,13 @@ button {
   font-size: 1.08rem;
 }
 
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
 .console-grid {
   display: grid;
   grid-template-columns: minmax(310px, 360px) minmax(0, 1fr);
@@ -107,6 +114,17 @@ button {
   display: grid;
   gap: 18px;
   align-content: start;
+}
+
+.console-main-standalone {
+  max-width: 1040px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  align-items: start;
 }
 
 .panel {
@@ -141,7 +159,7 @@ button {
 
 .panel-header p,
 .muted-copy {
-  margin: 6px 0 0;
+  margin: 6px 0 6px;
   color: var(--muted);
 }
 
@@ -159,6 +177,7 @@ label {
   gap: 8px;
   color: var(--muted);
   font-size: 0.94rem;
+  margin-bottom: 10px;
 }
 
 .field-hint {
@@ -195,6 +214,7 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  margin: 10px;
 }
 
 .button-row.compact {
@@ -202,6 +222,9 @@ textarea {
 }
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 999px;
   padding: 12px 18px;
@@ -424,6 +447,26 @@ textarea {
   margin-top: 18px;
 }
 
+.panel-embedded {
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.conversation-document-panel {
+  margin-bottom: 18px;
+}
+
+.analysis-banner {
+  display: grid;
+  gap: 8px;
+}
+
+.analysis-preview {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .upload-item {
   display: grid;
   gap: 10px;
@@ -468,6 +511,10 @@ textarea {
 
 @media (max-width: 1120px) {
   .console-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-grid {
     grid-template-columns: 1fr;
   }
 

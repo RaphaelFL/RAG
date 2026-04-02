@@ -1,4 +1,5 @@
 import type { RuntimeEnvironment } from '@/types/app';
+import { buildProxyUrl } from '@/lib/runtimeEnvironment';
 
 export class ApiError extends Error {
   status: number;
@@ -25,7 +26,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const requestBody = options.jsonBody === undefined ? options.body : JSON.stringify(options.jsonBody);
 
-  const response = await fetch(buildUrl(env.apiBaseUrl, path), {
+  const response = await fetch(buildProxyUrl(path), {
     ...options,
     headers: buildHeaders(env, options.headers),
     body: requestBody
@@ -44,20 +45,29 @@ export async function apiRequest<T>(
   return response.json() as Promise<T>;
 }
 
-export function buildHeaders(env: RuntimeEnvironment, headers?: Record<string, string>) {
+export function buildAuthHeaders(env: RuntimeEnvironment, headers?: Record<string, string>) {
   const resolvedHeaders: Record<string, string> = {
-    'X-Tenant-Id': env.tenantId,
-    'X-User-Id': env.userId,
-    'X-User-Role': env.userRole,
-    'Content-Type': 'application/json',
     ...headers
   };
+
+  if (env.authMode === 'development-headers') {
+    resolvedHeaders['X-Tenant-Id'] = env.tenantId;
+    resolvedHeaders['X-User-Id'] = env.userId;
+    resolvedHeaders['X-User-Role'] = env.userRole;
+  }
 
   if (env.token.trim()) {
     resolvedHeaders.Authorization = `Bearer ${env.token}`;
   }
 
   return resolvedHeaders;
+}
+
+export function buildHeaders(env: RuntimeEnvironment, headers?: Record<string, string>) {
+  return {
+    'Content-Type': 'application/json',
+    ...headers
+  };
 }
 
 export function buildUrl(baseUrl: string, path: string) {

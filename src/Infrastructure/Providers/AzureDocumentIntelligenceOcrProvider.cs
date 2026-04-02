@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Chatbot.Application.Abstractions;
+using Chatbot.Infrastructure.Authentication;
 using Chatbot.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
 
@@ -12,17 +13,20 @@ public sealed class AzureDocumentIntelligenceOcrProvider : IOcrProvider
     private readonly OcrOptions _ocrOptions;
     private readonly ExternalProviderClientOptions _providerOptions;
     private readonly ISecurityAuditLogger _securityAuditLogger;
+    private readonly IAzureAccessTokenProvider _azureAccessTokenProvider;
 
     public AzureDocumentIntelligenceOcrProvider(
         IHttpClientFactory httpClientFactory,
         IOptions<OcrOptions> ocrOptions,
         IOptions<ExternalProviderClientOptions> providerOptions,
-        ISecurityAuditLogger securityAuditLogger)
+        ISecurityAuditLogger securityAuditLogger,
+        IAzureAccessTokenProvider azureAccessTokenProvider)
     {
         _httpClientFactory = httpClientFactory;
         _ocrOptions = ocrOptions.Value;
         _providerOptions = providerOptions.Value;
         _securityAuditLogger = securityAuditLogger;
+        _azureAccessTokenProvider = azureAccessTokenProvider;
     }
 
     public string ProviderName => _ocrOptions.PrimaryProvider;
@@ -52,7 +56,7 @@ public sealed class AzureDocumentIntelligenceOcrProvider : IOcrProvider
     {
         var client = _httpClientFactory.CreateClient("AzureDocumentIntelligence");
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/documentintelligence/documentModels/{Uri.EscapeDataString(_ocrOptions.AzureDocumentIntelligenceModelId)}:analyze?api-version={Uri.EscapeDataString(_providerOptions.AzureDocumentIntelligenceApiVersion)}&outputContentFormat=text");
-        request.Headers.TryAddWithoutValidation("Ocp-Apim-Subscription-Key", _providerOptions.AzureDocumentIntelligenceApiKey);
+        await ApplyDocumentIntelligenceAuthenticationAsync(request, ct);
         request.Content = new StreamContent(content);
         request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
 
@@ -68,7 +72,7 @@ public sealed class AzureDocumentIntelligenceOcrProvider : IOcrProvider
         {
             await Task.Delay(500, ct);
             using var statusRequest = new HttpRequestMessage(HttpMethod.Get, operationLocation);
-            statusRequest.Headers.TryAddWithoutValidation("Ocp-Apim-Subscription-Key", _providerOptions.AzureDocumentIntelligenceApiKey);
+            await ApplyDocumentIntelligenceAuthenticationAsync(statusRequest, ct);
             using var statusResponse = await client.SendAsync(statusRequest, ct);
             var statusPayload = await statusResponse.Content.ReadAsStringAsync(ct);
             if (!statusResponse.IsSuccessStatusCode)
@@ -165,5 +169,20 @@ public sealed class AzureDocumentIntelligenceOcrProvider : IOcrProvider
                 }
             }
         };
+    }
+
+    private async Task ApplyDocumentIntelligenceAuthenticationAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        if (ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureDocumentIntelligenceApiKey))
+        {
+            request.Headers.TryAddWithoutValidation("Ocp-Apim-Subscription-Key", _providerOptions.AzureDocumentIntelligenceApiKey);
+            return;
+        }
+
+        var token = await _azureAccessTokenProvider.GetTokenAsync("https://cognitiveservices.azure.com/.default", ct);
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
     }
 }

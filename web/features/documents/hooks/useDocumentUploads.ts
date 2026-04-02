@@ -2,13 +2,26 @@
 
 import { useState } from 'react';
 import { ApiError } from '@/lib/http';
-import { getDocument, reindexDocument, uploadDocument } from '@/features/documents/api/documentsApi';
+import { bulkReindexDocuments, getDocument, reindexDocument, suggestDocumentMetadata, uploadDocument } from '@/features/documents/api/documentsApi';
 import type { RuntimeEnvironment } from '@/types/app';
-import type { DocumentDetails, DocumentUploadModel } from '@/features/documents/types/documents';
+import type { BulkReindexResponse, DocumentDetails, DocumentUploadModel } from '@/features/documents/types/documents';
 
-export function useDocumentUploads(environment: RuntimeEnvironment) {
-  const [uploads, setUploads] = useState<DocumentUploadModel[]>([]);
+export function useDocumentUploads(environment: RuntimeEnvironment, conversationSessionId: string) {
+  const [allUploads, setAllUploads] = useState<DocumentUploadModel[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [lastBulkReindex, setLastBulkReindex] = useState<BulkReindexResponse | null>(null);
+
+  async function suggestUploadMetadata(file: File) {
+    setError(null);
+
+    try {
+      return await suggestDocumentMetadata(environment, { file });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Falha ao analisar o documento';
+      setError(message);
+      throw error;
+    }
+  }
 
   async function submitUpload(input: {
     file: File;
@@ -20,11 +33,15 @@ export function useDocumentUploads(environment: RuntimeEnvironment) {
   }) {
     const localId = crypto.randomUUID();
     setError(null);
-    setUploads((current) => [
+    setAllUploads((current) => [
       {
         localId,
+        conversationSessionId,
         fileName: input.file.name,
-        status: 'sending'
+        status: 'sending',
+        logicalTitle: input.title,
+        category: input.category ?? input.categories?.[0],
+        tags: input.tags ?? []
       },
       ...current
     ]);
@@ -39,7 +56,7 @@ export function useDocumentUploads(environment: RuntimeEnvironment) {
         source: input.source
       });
 
-      setUploads((current) =>
+      setAllUploads((current) =>
         current.map((entry) =>
           entry.localId === localId
             ? {
@@ -56,7 +73,7 @@ export function useDocumentUploads(environment: RuntimeEnvironment) {
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Falha no upload';
       setError(message);
-      setUploads((current) =>
+      setAllUploads((current) =>
         current.map((entry) =>
           entry.localId === localId
             ? { ...entry, status: 'failed', error: message }
@@ -67,8 +84,9 @@ export function useDocumentUploads(environment: RuntimeEnvironment) {
   }
 
   async function triggerReindex(documentId: string, fullReindex: boolean) {
+    setError(null);
     const response = await reindexDocument(environment, documentId, fullReindex);
-    setUploads((current) =>
+    setAllUploads((current) =>
       current.map((entry) =>
         entry.documentId === documentId
           ? { ...entry, status: response.status, ingestionJobId: response.jobId ?? entry.ingestionJobId }
@@ -76,8 +94,29 @@ export function useDocumentUploads(environment: RuntimeEnvironment) {
       )
     );
 
-    const target = uploads.find((entry) => entry.documentId === documentId);
-    await pollDocument(documentId, target?.localId);
+    await pollDocument(documentId);
+  }
+
+  async function triggerTenantFullReindex() {
+    setError(null);
+    const response = await bulkReindexDocuments(environment, {
+      includeAllTenantDocuments: true,
+      mode: 'full',
+      reason: 'apply-semantic-chunking-upgrade'
+    });
+
+    setLastBulkReindex(response);
+    setAllUploads((current) =>
+      current.map((entry) =>
+        entry.documentId
+          ? {
+              ...entry,
+              status: 'ReindexPending',
+              ingestionJobId: response.jobId
+            }
+          : entry
+      )
+    );
   }
 
   async function pollDocument(documentId: string, localId?: string) {
@@ -96,16 +135,20 @@ export function useDocumentUploads(environment: RuntimeEnvironment) {
   }
 
   function syncDetails(details: DocumentDetails, localId?: string) {
-    setUploads((current) => {
+    setAllUploads((current) => {
       const existing = current.find((entry) => entry.documentId === details.documentId || entry.localId === localId);
 
       if (!existing) {
         return [
           {
             localId: localId ?? crypto.randomUUID(),
+            conversationSessionId,
             documentId: details.documentId,
             fileName: details.title,
             status: details.status,
+            logicalTitle: details.title,
+            category: details.metadata.category ?? details.metadata.categories[0],
+            tags: details.metadata.tags,
             details
           },
           ...current
@@ -119,6 +162,9 @@ export function useDocumentUploads(environment: RuntimeEnvironment) {
               documentId: details.documentId,
               fileName: details.title,
               status: details.status,
+              logicalTitle: details.title,
+              category: details.metadata.category ?? details.metadata.categories[0] ?? entry.category,
+              tags: details.metadata.tags.length > 0 ? details.metadata.tags : entry.tags,
               details
             }
           : entry
@@ -126,10 +172,15 @@ export function useDocumentUploads(environment: RuntimeEnvironment) {
     });
   }
 
+  const uploads = allUploads.filter((entry) => entry.conversationSessionId === conversationSessionId);
+
   return {
     uploads,
     error,
+    lastBulkReindex,
+    suggestUploadMetadata,
     submitUpload,
-    triggerReindex
+    triggerReindex,
+    triggerTenantFullReindex
   };
 }

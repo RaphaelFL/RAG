@@ -1,10 +1,12 @@
 using System.Security.Claims;
+using System.Text;
 using System.Threading.RateLimiting;
 using Chatbot.Api.Authentication;
 using Chatbot.Api.Contracts;
 using Chatbot.Api.Middleware;
 using Chatbot.Application;
 using Chatbot.Application.Abstractions;
+using Chatbot.Application.Configuration;
 using Chatbot.Infrastructure;
 using Chatbot.Infrastructure.Configuration;
 using Chatbot.Ingestion;
@@ -13,9 +15,12 @@ using Chatbot.Retrieval;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -23,6 +28,8 @@ using Serilog;
 using Chatbot.Application.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
+
+AddOptionalLocalConfiguration(builder);
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -68,7 +75,9 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Use qualquer bearer token não vazio no ambiente atual."
+        Description = builder.Environment.IsDevelopment()
+            ? "Em desenvolvimento, aceite JWT valido ou o modo de headers de desenvolvimento com bearer token nao vazio."
+            : "Informe um JWT valido emitido para esta API."
     });
     options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
     {
@@ -87,18 +96,75 @@ builder.Services.AddSwaggerGen(options =>
 });
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("ConfiguredOrigins", policy =>
     {
-        policy.AllowAnyOrigin()
-            .AllowAnyMethod()
+        var allowedOrigins = ResolveAllowedOrigins(builder.Environment, builder.Configuration);
+
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.SetIsOriginAllowed(origin =>
+                    IsConfiguredOrigin(origin, allowedOrigins)
+                    || IsLocalDevelopmentOrigin(origin))
+                .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                .AllowAnyHeader();
+
+            return;
+        }
+
+        policy.WithOrigins(allowedOrigins)
+            .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .AllowAnyHeader();
     });
 });
+builder.Services.AddOptions<CorsPolicyOptions>()
+    .Bind(builder.Configuration.GetSection("Cors"))
+    .Validate(options => options.AllowedOrigins.All(IsAbsoluteOrigin), "Cors:AllowedOrigins deve conter apenas origens absolutas validas.");
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection("JWT"));
+
+static void AddOptionalLocalConfiguration(WebApplicationBuilder builder)
+{
+    var environmentName = builder.Environment.EnvironmentName;
+
+    foreach (var directory in EnumerateConfigurationDirectories(builder.Environment.ContentRootPath))
+    {
+        AddJsonFileIfExists(builder.Configuration, Path.Combine(directory, "appsettings.local.json"));
+        AddJsonFileIfExists(builder.Configuration, Path.Combine(directory, $"appsettings.{environmentName}.local.json"));
+        AddJsonFileIfExists(builder.Configuration, Path.Combine(directory, "secrets.json"));
+    }
+}
+
+static IEnumerable<string> EnumerateConfigurationDirectories(string contentRootPath)
+{
+    var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var current = new DirectoryInfo(contentRootPath);
+
+    for (var depth = 0; current is not null && depth < 4; depth += 1)
+    {
+        if (visited.Add(current.FullName))
+        {
+            yield return current.FullName;
+        }
+
+        current = current.Parent;
+    }
+}
+
+static void AddJsonFileIfExists(ConfigurationManager configuration, string path)
+{
+    if (!File.Exists(path))
+    {
+        return;
+    }
+
+    configuration.AddJsonFile(path, optional: true, reloadOnChange: true);
+}
 
 builder.Services.AddOptions<ChatModelOptions>()
     .Bind(builder.Configuration.GetRequiredSection("ChatModelOptions"))
     .Validate(options => !string.IsNullOrWhiteSpace(options.Model), "ChatModelOptions:Model e obrigatorio.")
     .Validate(options => options.MaxTokens > 0, "ChatModelOptions:MaxTokens deve ser maior que zero.")
+    .Validate(options => options.MaxPromptContextTokens > 0, "ChatModelOptions:MaxPromptContextTokens deve ser maior que zero.")
     .Validate(options => options.TopP is >= 0 and <= 1, "ChatModelOptions:TopP deve estar entre 0 e 1.")
     .ValidateOnStart();
 builder.Services.AddOptions<EmbeddingOptions>()
@@ -114,6 +180,21 @@ builder.Services.AddOptions<SearchOptions>()
     .Validate(options => options.HybridSearchWeight is >= 0 and <= 1, "SearchOptions:HybridSearchWeight deve estar entre 0 e 1.")
     .Validate(options => options.TopK > 0, "SearchOptions:TopK deve ser maior que zero.")
     .ValidateOnStart();
+builder.Services.AddOptions<ChunkingOptions>()
+    .Bind(builder.Configuration.GetSection("ChunkingOptions"))
+    .Validate(options => options.DenseChunkSize > 0, "ChunkingOptions:DenseChunkSize deve ser maior que zero.")
+    .Validate(options => options.NarrativeChunkSize > 0, "ChunkingOptions:NarrativeChunkSize deve ser maior que zero.")
+    .Validate(options => options.DenseOverlap >= 0, "ChunkingOptions:DenseOverlap nao pode ser negativo.")
+    .Validate(options => options.NarrativeOverlap >= 0, "ChunkingOptions:NarrativeOverlap nao pode ser negativo.")
+    .Validate(options => options.MinimumChunkCharacters > 0, "ChunkingOptions:MinimumChunkCharacters deve ser maior que zero.")
+    .ValidateOnStart();
+builder.Services.AddOptions<RetrievalOptimizationOptions>()
+    .Bind(builder.Configuration.GetSection("RetrievalOptimizationOptions"))
+    .Validate(options => options.CandidateMultiplier > 0, "RetrievalOptimizationOptions:CandidateMultiplier deve ser maior que zero.")
+    .Validate(options => options.MaxCandidateCount > 0, "RetrievalOptimizationOptions:MaxCandidateCount deve ser maior que zero.")
+    .Validate(options => options.MaxContextChunks > 0, "RetrievalOptimizationOptions:MaxContextChunks deve ser maior que zero.")
+    .Validate(options => options.MinimumRerankScore is >= 0 and <= 1.5, "RetrievalOptimizationOptions:MinimumRerankScore deve estar entre 0 e 1.5.")
+    .ValidateOnStart();
 builder.Services.AddOptions<BlobStorageOptions>()
     .Bind(builder.Configuration.GetRequiredSection("BlobStorageOptions"))
     .Validate(options => !string.IsNullOrWhiteSpace(options.ContainerName), "BlobStorageOptions:ContainerName e obrigatorio.")
@@ -124,6 +205,8 @@ builder.Services.AddOptions<OcrOptions>()
     .Validate(options => !options.EnableFallback || !string.IsNullOrWhiteSpace(options.FallbackProvider), "OcrOptions:FallbackProvider e obrigatorio quando EnableFallback=true.")
     .Validate(options => !string.Equals(options.PrimaryProvider, "AzureDocumentIntelligence", StringComparison.OrdinalIgnoreCase)
         || !string.IsNullOrWhiteSpace(options.AzureDocumentIntelligenceModelId), "OcrOptions:AzureDocumentIntelligenceModelId e obrigatorio quando PrimaryProvider=AzureDocumentIntelligence.")
+    .Validate(options => options.MinimumDirectTextCharacters >= 0, "OcrOptions:MinimumDirectTextCharacters nao pode ser negativo.")
+    .Validate(options => options.MinimumDirectTextCoverageRatio is >= 0 and <= 1, "OcrOptions:MinimumDirectTextCoverageRatio deve estar entre 0 e 1.")
     .ValidateOnStart();
 builder.Services.AddOptions<PromptTemplateOptions>()
     .Bind(builder.Configuration.GetRequiredSection("PromptTemplateOptions"))
@@ -135,6 +218,25 @@ builder.Services.AddOptions<PromptTemplateOptions>()
 builder.Services.AddOptions<FeatureFlagOptions>()
     .Bind(builder.Configuration.GetRequiredSection("FeatureFlagOptions"))
     .ValidateOnStart();
+builder.Services.AddOptions<OperationalResilienceOptions>()
+    .Bind(builder.Configuration.GetSection("OperationalResilienceOptions"))
+    .Validate(options => options.TimeoutSeconds > 0, "OperationalResilienceOptions:TimeoutSeconds deve ser maior que zero.")
+    .ValidateOnStart();
+builder.Services.AddOptions<ProviderExecutionModeOptions>()
+    .Bind(builder.Configuration.GetSection("ProviderExecutionModeOptions"))
+    .ValidateOnStart();
+builder.Services.AddOptions<CacheOptions>()
+    .Bind(builder.Configuration.GetSection("CacheOptions"))
+    .Validate(options => options.RetrievalTtlSeconds > 0, "CacheOptions:RetrievalTtlSeconds deve ser maior que zero.")
+    .Validate(options => options.ChatCompletionTtlSeconds > 0, "CacheOptions:ChatCompletionTtlSeconds deve ser maior que zero.")
+    .Validate(options => options.EmbeddingTtlHours > 0, "CacheOptions:EmbeddingTtlHours deve ser maior que zero.")
+    .Validate(options => options.MaxInMemoryEntries > 0, "CacheOptions:MaxInMemoryEntries deve ser maior que zero.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.InstancePrefix), "CacheOptions:InstancePrefix e obrigatorio.")
+    .ValidateOnStart();
+builder.Services.AddOptions<RedisSettings>()
+    .Bind(builder.Configuration.GetSection("RedisSettings"))
+    .Validate(options => options.Port > 0, "RedisSettings:Port deve ser maior que zero.")
+    .ValidateOnStart();
 builder.Services.AddOptions<ExternalProviderClientOptions>()
     .Bind(builder.Configuration.GetRequiredSection("ExternalProviderClientOptions"))
     .Validate(options => options.TimeoutSeconds > 0, "ExternalProviderClientOptions:TimeoutSeconds deve ser maior que zero.")
@@ -144,8 +246,69 @@ builder.Services.AddOptions<ExternalProviderClientOptions>()
     .ValidateOnStart();
 
 builder.Services
-    .AddAuthentication("HeaderBearer")
-    .AddScheme<AuthenticationSchemeOptions, HeaderBearerAuthenticationHandler>("HeaderBearer", _ => { });
+    .AddAuthentication("SmartAuth")
+    .AddPolicyScheme("SmartAuth", "JWT or development header auth", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+            builder.Environment.IsDevelopment() && IsDevelopmentHeaderRequest(context.Request)
+                ? "DevHeaderBearer"
+                : JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+    {
+        var jwtOptions = builder.Configuration.GetSection("JWT").Get<JwtOptions>() ?? new JwtOptions();
+        var signingKey = ResolveSigningKey(jwtOptions)
+            ?? throw new InvalidOperationException("JWT signing key not configured.");
+
+        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = !string.IsNullOrWhiteSpace(jwtOptions.Issuer),
+            ValidIssuer = jwtOptions.Issuer,
+            ValidateAudience = !string.IsNullOrWhiteSpace(jwtOptions.Audience),
+            ValidAudience = jwtOptions.Audience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = signingKey,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(2),
+            NameClaimType = ClaimTypes.NameIdentifier,
+            RoleClaimType = ClaimTypes.Role
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                var identity = context.Principal?.Identity as ClaimsIdentity;
+                if (identity is null)
+                {
+                    context.Fail("JWT identity ausente.");
+                    return Task.CompletedTask;
+                }
+
+                var tenantClaim = identity.FindFirst("tenant_id")?.Value ?? identity.FindFirst("tenantId")?.Value;
+                if (!Guid.TryParse(tenantClaim, out _))
+                {
+                    context.Fail("JWT precisa conter claim tenant_id valida.");
+                    return Task.CompletedTask;
+                }
+
+                if (identity.FindFirst("tenant_id") is null)
+                {
+                    identity.AddClaim(new Claim("tenant_id", tenantClaim));
+                }
+
+                return Task.CompletedTask;
+            },
+            OnAuthenticationFailed = context =>
+            {
+                context.HttpContext.RequestServices
+                    .GetRequiredService<ISecurityAuditLogger>()
+                    .LogAuthenticationFailure(null, $"JWT validation failed: {context.Exception.Message}");
+                return Task.CompletedTask;
+            }
+        };
+    })
+    .AddScheme<AuthenticationSchemeOptions, HeaderBearerAuthenticationHandler>("DevHeaderBearer", _ => { });
 
 builder.Services.AddSingleton<IRequestContextAccessor, RequestContextAccessor>();
 builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ApiAuthorizationMiddlewareResultHandler>();
@@ -264,14 +427,11 @@ else
 {
     app.UseHttpsRedirection();
 }
-app.UseCors("AllowAll");
-
-// Custom middleware
-app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ErrorHandlingMiddleware>();
-app.UseMiddleware<RateLimitHeadersMiddleware>();
-
+app.UseCors("ConfiguredOrigins");
 app.UseAuthentication();
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<RateLimitHeadersMiddleware>();
 app.UseRateLimiter();
 app.UseAuthorization();
 
@@ -311,12 +471,107 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = Dat
 
 static string GetPartitionKey(HttpContext context)
 {
-    var tenantId = context.User.FindFirstValue("tenant_id")
-        ?? context.Request.Headers["X-Tenant-Id"].ToString();
+    var tenantId = context.User.FindFirstValue("tenant_id") ?? "anonymous";
     var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? "anonymous";
 
     return $"{tenantId}:{userId}";
+}
+
+static string[] ResolveAllowedOrigins(IHostEnvironment environment, IConfiguration configuration)
+{
+    var configuredOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+        ?.Where(origin => IsAbsoluteOrigin(origin))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    if (configuredOrigins is { Length: > 0 })
+    {
+        return configuredOrigins;
+    }
+
+    if (environment.IsDevelopment())
+    {
+        return new[]
+        {
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "https://localhost:3000",
+            "https://localhost:3001",
+            "http://localhost:15213",
+            "https://localhost:15213",
+            "http://localhost:15214",
+            "https://localhost:15214"
+        }
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    }
+
+    throw new InvalidOperationException("Cors:AllowedOrigins deve ser configurado fora de desenvolvimento.");
+}
+
+static bool IsAbsoluteOrigin(string? origin)
+{
+    return Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+        && !string.IsNullOrWhiteSpace(uri.Host);
+}
+
+static bool IsConfiguredOrigin(string? origin, IEnumerable<string> allowedOrigins)
+{
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+    {
+        return false;
+    }
+
+    var normalizedOrigin = uri.GetLeftPart(UriPartial.Authority);
+    return allowedOrigins.Contains(normalizedOrigin, StringComparer.OrdinalIgnoreCase);
+}
+
+static bool IsLocalDevelopmentOrigin(string? origin)
+{
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+    {
+        return false;
+    }
+
+    var isHttp = uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps;
+    var isLoopback = uri.IsLoopback
+        || string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(uri.Host, "::1", StringComparison.OrdinalIgnoreCase);
+
+    return isHttp && isLoopback && uri.Port > 0;
+}
+
+static bool IsDevelopmentHeaderRequest(HttpRequest request)
+{
+    return request.Headers.ContainsKey("X-Tenant-Id")
+        || request.Headers.ContainsKey("X-User-Id")
+        || request.Headers.ContainsKey("X-User-Role");
+}
+
+static SecurityKey? ResolveSigningKey(JwtOptions jwtOptions)
+{
+    if (!string.IsNullOrWhiteSpace(jwtOptions.SecKey))
+    {
+        var bytes = jwtOptions.SecKey
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => byte.TryParse(value, out var parsed) ? parsed : (byte)0)
+            .ToArray();
+
+        if (bytes.Length > 0)
+        {
+            return new SymmetricSecurityKey(bytes);
+        }
+    }
+
+    if (string.IsNullOrWhiteSpace(jwtOptions.Key))
+    {
+        return null;
+    }
+
+    return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key));
 }
 
 try

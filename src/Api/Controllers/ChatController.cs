@@ -3,6 +3,7 @@ using Chatbot.Application.Abstractions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using System.Text.Json;
 
 namespace Chatbot.Api.Controllers;
 
@@ -15,6 +16,11 @@ namespace Chatbot.Api.Controllers;
 [Produces("application/json")]
 public class ChatController : ControllerBase
 {
+    private static readonly JsonSerializerOptions StreamingJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     private readonly IChatOrchestrator _chatOrchestrator;
     private readonly IChatSessionStore _chatSessionStore;
     private readonly IDocumentCatalog _documentCatalog;
@@ -109,7 +115,7 @@ public class ChatController : ControllerBase
         {
             await foreach (var @event in _chatOrchestrator.StreamAsync(request, cancellationToken))
             {
-                var json = System.Text.Json.JsonSerializer.Serialize(@event);
+                var json = JsonSerializer.Serialize(@event, StreamingJsonOptions);
                 await Response.WriteAsync($"event: {@event.EventType}\r\n");
                 await Response.WriteAsync($"data: {json}\r\n\r\n");
                 await Response.Body.FlushAsync(cancellationToken);
@@ -122,12 +128,12 @@ public class ChatController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in stream for session {sessionId}", request.SessionId);
-            var errorEvent = System.Text.Json.JsonSerializer.Serialize(new StreamErrorEventDto
+            var errorEvent = JsonSerializer.Serialize(new StreamErrorEventDto
             {
                 Code = "stream_error",
                 Message = "An error occurred during streaming",
                 TraceId = HttpContext.TraceIdentifier
-            });
+            }, StreamingJsonOptions);
             await Response.WriteAsync($"event: error\r\n");
             await Response.WriteAsync($"data: {errorEvent}\r\n\r\n");
         }
@@ -139,7 +145,7 @@ public class ChatController : ControllerBase
     [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status404NotFound)]
     public ActionResult<ChatSessionSnapshot> GetSession([FromRoute] Guid sessionId)
     {
-        var tenantIdRaw = User.FindFirst("tenant_id")?.Value ?? HttpContext.Request.Headers["X-Tenant-Id"].ToString();
+        var tenantIdRaw = User.FindFirst("tenant_id")?.Value;
         if (!Guid.TryParse(tenantIdRaw, out var tenantId))
         {
             return Unauthorized(new ErrorResponseDto

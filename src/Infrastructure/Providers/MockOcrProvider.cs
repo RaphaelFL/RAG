@@ -2,6 +2,7 @@ using Chatbot.Application.Abstractions;
 using Chatbot.Infrastructure.Configuration;
 using Chatbot.Infrastructure.Observability;
 using Microsoft.Extensions.Options;
+using System.Text;
 
 namespace Chatbot.Infrastructure.Providers;
 
@@ -27,8 +28,13 @@ public sealed class MockOcrProvider : IOcrProvider
             content.Position = 0;
         }
 
-        using var reader = new StreamReader(content, System.Text.Encoding.UTF8, true, 1024, leaveOpen: true);
-        var extractedText = await reader.ReadToEndAsync(ct);
+        await using var buffer = new MemoryStream();
+        await content.CopyToAsync(buffer, ct);
+        var payload = buffer.ToArray();
+
+        var extractedText = string.Equals(Path.GetExtension(fileName), ".pdf", StringComparison.OrdinalIgnoreCase)
+            ? PdfTextExtraction.TryExtractText(payload) ?? string.Empty
+            : Encoding.UTF8.GetString(payload);
 
         if (content.CanSeek)
         {

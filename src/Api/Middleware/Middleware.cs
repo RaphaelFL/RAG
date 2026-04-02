@@ -21,11 +21,9 @@ public class CorrelationIdMiddleware
             ? context.Request.Headers[CorrelationIdHeader].ToString()
             : Guid.NewGuid().ToString();
 
-        var tenantId = context.User.FindFirstValue("tenant_id")
-            ?? context.Request.Headers["X-Tenant-Id"].ToString();
+        var tenantId = context.User.FindFirstValue("tenant_id");
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var userRole = context.User.FindFirstValue(ClaimTypes.Role)
-            ?? context.Request.Headers["X-User-Role"].ToString();
+        var userRole = context.User.FindFirstValue(ClaimTypes.Role);
 
         context.Items["CorrelationId"] = correlationId;
         context.Items["TenantId"] = tenantId;
@@ -38,7 +36,7 @@ public class CorrelationIdMiddleware
         _requestContextAccessor.UserRole = userRole;
 
         using (LogContext.PushProperty("CorrelationId", correlationId))
-        using (LogContext.PushProperty("TenantId", tenantId))
+        using (LogContext.PushProperty("TenantId", tenantId ?? "anonymous"))
         {
             await _next(context);
         }

@@ -13,7 +13,7 @@ O projeto já implementa o fluxo local de MVP pedido pelos arquivos .ia:
 - upload, polling de status e reindexação;
 - prompt templates versionados;
 - prompt injection detection básica;
-- OCR com provider real por configuração e fallback local quando necessário;
+- OCR com provider real por configuração;
 - jobs em background com worker hospedado;
 - OpenTelemetry, Serilog e Polly;
 - testes unitários, integração, componente e E2E.
@@ -63,10 +63,10 @@ dotnet restore ChatbotApi.slnx
 ### 2. Subir a API localmente
 
 ```bash
-dotnet run --project src/Api
+.\scripts\run-api.ps1
 ```
 
-A API sobe nas URLs definidas pela configuração atual do ambiente ASP.NET Core e do projeto.
+No ambiente local, o script sobe a API em https://localhost:15213 e http://localhost:15214.
 
 ### 3. Subir o frontend
 
@@ -81,10 +81,10 @@ O frontend sobe na URL definida pelo runtime do Next.js no ambiente local.
 ### 4. Rodar com Docker
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
-O compose atual sobe apenas a API.
+O compose atual sobe apenas a API em container Linux, publicada em http://localhost:5000.
 
 ## Autenticação local de desenvolvimento
 
@@ -156,9 +156,9 @@ Sem accessPolicy, o acesso segue a regra padrão do tenant atual. PlatformAdmin 
 O backend agora usa esta convenção:
 
 - configuração não sensível fica em [src/Api/appsettings.json](src/Api/appsettings.json)
-- arquivos `appsettings*.json` versionados devem permanecer sanitizados, sem segredos reais
+- o único `appsettings` versionado usado como base no backend local é [src/Api/appsettings.json](src/Api/appsettings.json)
 - o backend não usa arquivo `.env`
-- ajustes específicos de ambiente devem respeitar a convenção adotada pelo projeto para os arquivos `appsettings`
+- credenciais e sobreposições locais opcionais devem ficar fora do versionamento
 
 ### Frontend
 
@@ -208,14 +208,16 @@ As principais seções estão em [src/Api/appsettings.json](src/Api/appsettings.
 
 ### Saneamento dos arquivos versionados
 
-- `src/Api/appsettings.json` e `src/Api/appsettings.{Environment}.json` podem ser versionados desde que contenham apenas estrutura, placeholders ou valores operacionais nao sensiveis
+- `src/Api/appsettings.json` pode ser versionado desde que contenha apenas estrutura, placeholders ou valores operacionais nao sensiveis
 - `web/.env` pode ser versionado se contiver apenas valores publicos e sanitizados
 - segredos reais, chaves, tokens e credenciais nao devem aparecer nem no `README` nem em arquivos versionados
 - `.env`, `.env.local`, `.env.development.local`, `.env.production.local`, `web/.env.local`, `web/.env.development.local`, `web/.env.production.local`, `appsettings.*.local.json` e `secrets.json` tambem foram deixados sanitizados para a primeira subida
+- a API carrega automaticamente `appsettings.local.json`, `appsettings.{Environment}.local.json` e `secrets.json` opcionais no diretorio do projeto e nos diretorios-pai proximos, permitindo credenciais locais sem alterar `src/Api/appsettings.json`
+- em desenvolvimento local, `scripts/run-api.ps1` fixa as portas esperadas pela UI; quando `ExternalProviderClientOptions:UseAzureAdAuthentication=true` estiver ativo em `src/Api/appsettings.json`, a primeira chamada real pode exigir login por device code e usar o timeout operacional maior previsto para autenticacao interativa
 
 ### Falha explícita de startup
 
-A API agora falha no startup quando um provider real está parcialmente configurado. Exemplos:
+A API agora falha no startup quando um provider real está parcialmente configurado ou quando a execução real é obrigatória e ainda faltam credenciais. Não existe mais fallback silencioso para chat mock, embeddings mock, OCR mock, blob em memória ou índice em memória fora de opt-in explícito para testes. Exemplos:
 
 - Azure OpenAI com endpoint e key, mas sem deployment
 - Azure AI Search com endpoint, mas sem key

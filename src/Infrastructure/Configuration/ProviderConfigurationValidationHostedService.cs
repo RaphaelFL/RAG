@@ -10,6 +10,7 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
     private readonly SearchOptions _searchOptions;
     private readonly BlobStorageOptions _blobOptions;
     private readonly OcrOptions _ocrOptions;
+    private readonly ProviderExecutionModeOptions _executionModeOptions;
     private readonly ExternalProviderClientOptions _providerOptions;
 
     public ProviderConfigurationValidationHostedService(
@@ -18,6 +19,7 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
         IOptions<SearchOptions> searchOptions,
         IOptions<BlobStorageOptions> blobOptions,
         IOptions<OcrOptions> ocrOptions,
+        IOptions<ProviderExecutionModeOptions> executionModeOptions,
         IOptions<ExternalProviderClientOptions> providerOptions)
     {
         _chatOptions = chatOptions.Value;
@@ -25,6 +27,7 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
         _searchOptions = searchOptions.Value;
         _blobOptions = blobOptions.Value;
         _ocrOptions = ocrOptions.Value;
+        _executionModeOptions = executionModeOptions.Value;
         _providerOptions = providerOptions.Value;
     }
 
@@ -61,11 +64,16 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
         if (!HasAnyConfiguredValue(fields))
         {
+            if (!_executionModeOptions.AllowMockProviders)
+            {
+                errors.Add("Azure OpenAI chat nao esta configurado e mocks estao desabilitados. Preencha ExternalProviderClientOptions:AzureOpenAiBaseUrl, ExternalProviderClientOptions:AzureOpenAiApiKey e ExternalProviderClientOptions:AzureOpenAiChatDeployment ou ChatModelOptions:Deployment.");
+            }
+
             return;
         }
 
         if (!ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureOpenAiBaseUrl)
-            || !ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureOpenAiApiKey)
+            || (!ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureOpenAiApiKey) && !_providerOptions.UseAzureAdAuthentication)
             || !HasAnyConfiguredValue(new[] { _providerOptions.AzureOpenAiChatDeployment, _chatOptions.Deployment }))
         {
             errors.Add("Azure OpenAI chat esta parcialmente configurado. Preencha ExternalProviderClientOptions:AzureOpenAiBaseUrl, ExternalProviderClientOptions:AzureOpenAiApiKey e ExternalProviderClientOptions:AzureOpenAiChatDeployment ou ChatModelOptions:Deployment.");
@@ -84,11 +92,16 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
         if (!HasAnyConfiguredValue(fields))
         {
+            if (!_executionModeOptions.AllowMockProviders)
+            {
+                errors.Add("Azure OpenAI embeddings nao esta configurado e mocks estao desabilitados. Preencha ExternalProviderClientOptions:AzureOpenAiBaseUrl, ExternalProviderClientOptions:AzureOpenAiApiKey e ExternalProviderClientOptions:AzureOpenAiEmbeddingDeployment ou EmbeddingOptions:Deployment.");
+            }
+
             return;
         }
 
         if (!ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureOpenAiBaseUrl)
-            || !ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureOpenAiApiKey)
+            || (!ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureOpenAiApiKey) && !_providerOptions.UseAzureAdAuthentication)
             || !HasAnyConfiguredValue(new[] { _providerOptions.AzureOpenAiEmbeddingDeployment, _embeddingOptions.Deployment }))
         {
             errors.Add("Azure OpenAI embeddings esta parcialmente configurado. Preencha ExternalProviderClientOptions:AzureOpenAiBaseUrl, ExternalProviderClientOptions:AzureOpenAiApiKey e ExternalProviderClientOptions:AzureOpenAiEmbeddingDeployment ou EmbeddingOptions:Deployment.");
@@ -105,11 +118,16 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
         if (!connectionConfigured)
         {
+            if (!_executionModeOptions.AllowInMemoryInfrastructure)
+            {
+                errors.Add("Azure AI Search nao esta configurado e infraestrutura em memoria esta desabilitada. Preencha ExternalProviderClientOptions:AzureSearchBaseUrl, ExternalProviderClientOptions:AzureSearchApiKey e SearchOptions:IndexName.");
+            }
+
             return;
         }
 
         if (!ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureSearchBaseUrl)
-            || !ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureSearchApiKey)
+            || (!ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureSearchApiKey) && !_providerOptions.UseAzureAdAuthentication)
             || string.IsNullOrWhiteSpace(_searchOptions.IndexName))
         {
             errors.Add("Azure AI Search esta parcialmente configurado. Preencha ExternalProviderClientOptions:AzureSearchBaseUrl, ExternalProviderClientOptions:AzureSearchApiKey e SearchOptions:IndexName.");
@@ -122,6 +140,11 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
         var containerConfigured = !string.IsNullOrWhiteSpace(_blobOptions.ContainerName);
         if (!connectionConfigured && containerConfigured)
         {
+            if (!_executionModeOptions.AllowInMemoryInfrastructure)
+            {
+                errors.Add("Azure Blob Storage nao esta configurado e infraestrutura em memoria esta desabilitada. Preencha BlobStorageOptions:ConnectionString e BlobStorageOptions:ContainerName.");
+            }
+
             return;
         }
 
@@ -141,11 +164,16 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
         if (!connectionConfigured)
         {
+            if (!_executionModeOptions.AllowMockProviders)
+            {
+                errors.Add("Azure Document Intelligence nao esta configurado e mocks estao desabilitados. Preencha ExternalProviderClientOptions:AzureDocumentIntelligenceBaseUrl, ExternalProviderClientOptions:AzureDocumentIntelligenceApiKey e OcrOptions:AzureDocumentIntelligenceModelId.");
+            }
+
             return;
         }
 
         if (!ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureDocumentIntelligenceBaseUrl)
-            || !ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureDocumentIntelligenceApiKey)
+            || (!ExternalProviderClientOptions.HasConfiguredValue(_providerOptions.AzureDocumentIntelligenceApiKey) && !_providerOptions.UseAzureAdAuthentication)
             || string.IsNullOrWhiteSpace(_ocrOptions.AzureDocumentIntelligenceModelId))
         {
             errors.Add("Azure Document Intelligence esta parcialmente configurado. Preencha ExternalProviderClientOptions:AzureDocumentIntelligenceBaseUrl, ExternalProviderClientOptions:AzureDocumentIntelligenceApiKey e OcrOptions:AzureDocumentIntelligenceModelId.");

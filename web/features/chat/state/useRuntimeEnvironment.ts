@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { saveRuntimeEnvironment } from '@/features/chat/api/runtimeEnvironmentApi';
 import { createDefaultEnvironment } from '@/lib/publicEnv';
 import type { RuntimeEnvironment } from '@/types/app';
 
@@ -35,12 +36,21 @@ export function useRuntimeEnvironment() {
 
     const persisted: PersistedEnvironment = {
       apiBaseUrl: environment.apiBaseUrl,
+      authMode: environment.authMode,
       tenantId: environment.tenantId,
       userId: environment.userId,
       userRole: environment.userRole
     };
 
     globalThis.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+  }, [environment, isReady]);
+
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+
+    void saveRuntimeEnvironment(environment).catch(() => undefined);
   }, [environment, isReady]);
 
   return {

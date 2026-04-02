@@ -1,6 +1,33 @@
-import { ApiError, apiRequest, buildUrl } from '@/lib/http';
+import { ApiError, apiRequest } from '@/lib/http';
+import { buildProxyUrl } from '@/lib/runtimeEnvironment';
 import type { RuntimeEnvironment } from '@/types/app';
-import type { DocumentDetails, UploadDocumentResponse } from '@/features/documents/types/documents';
+import type { BulkReindexResponse, DocumentDetails, DocumentMetadataSuggestion, UploadDocumentResponse } from '@/features/documents/types/documents';
+
+export async function suggestDocumentMetadata(
+  env: RuntimeEnvironment,
+  input: {
+    file: File;
+  }
+) {
+  const formData = new FormData();
+  formData.append('file', input.file);
+
+  const response = await fetch(buildProxyUrl('/api/v1/documents/suggest-metadata'), {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => undefined);
+    throw new ApiError(
+      typeof payload?.message === 'string' ? payload.message : `HTTP ${response.status}`,
+      response.status,
+      payload
+    );
+  }
+
+  return response.json() as Promise<DocumentMetadataSuggestion>;
+}
 
 export async function uploadDocument(
   env: RuntimeEnvironment,
@@ -36,19 +63,8 @@ export async function uploadDocument(
     formData.append('source', input.source);
   }
 
-  const headers: Record<string, string> = {
-    'X-Tenant-Id': env.tenantId,
-    'X-User-Id': env.userId,
-    'X-User-Role': env.userRole
-  };
-
-  if (env.token.trim()) {
-    headers.Authorization = `Bearer ${env.token}`;
-  }
-
-  const response = await fetch(buildUrl(env.apiBaseUrl, '/api/v1/documents/ingest'), {
+  const response = await fetch(buildProxyUrl('/api/v1/documents/ingest'), {
     method: 'POST',
-    headers,
     body: formData
   });
 
@@ -82,4 +98,24 @@ export async function reindexDocument(env: RuntimeEnvironment, documentId: strin
       }
     }
   );
+}
+
+export async function bulkReindexDocuments(
+  env: RuntimeEnvironment,
+  input: {
+    documentIds?: string[];
+    includeAllTenantDocuments?: boolean;
+    mode: 'incremental' | 'full';
+    reason?: string;
+  }
+) {
+  return apiRequest<BulkReindexResponse>(env, '/api/v1/documents/reindex', {
+    method: 'POST',
+    jsonBody: {
+      documentIds: input.documentIds ?? [],
+      includeAllTenantDocuments: Boolean(input.includeAllTenantDocuments),
+      mode: input.mode,
+      reason: input.reason
+    }
+  });
 }

@@ -35,7 +35,12 @@ public class MockOcrProviderTests
     public async Task ExtractAsync_ShouldReturnOriginalText_WhenContentContainsText()
     {
         var provider = new MockOcrProvider(
-            Options.Create(new OcrOptions()),
+            Options.Create(new OcrOptions
+            {
+                PrimaryProvider = "AzureDocumentIntelligence",
+                FallbackProvider = "GoogleVision",
+                EnableFallback = true
+            }),
             new SecurityAuditLogger(NullLogger<SecurityAuditLogger>.Instance));
 
         await using var content = new MemoryStream(Encoding.UTF8.GetBytes("Politica de reembolso"));
