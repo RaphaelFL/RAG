@@ -34,6 +34,7 @@ AddOptionalLocalConfiguration(builder);
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore.DataProtection", Serilog.Events.LogEventLevel.Warning)
     .WriteTo.Console()
     .WriteTo.File("logs/chatbot-.txt", rollingInterval: RollingInterval.Day)
     .Enrich.FromLogContext()

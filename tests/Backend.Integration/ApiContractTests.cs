@@ -165,6 +165,26 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task SuggestMetadataEndpoint_ShouldAcceptCsvFilesWithTextContent()
+    {
+        using var client = _factory.CreateClient();
+        AddHeaders(client, "12121212-1212-1212-1212-121212121212");
+
+        var form = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(Encoding.UTF8.GetBytes("nome,cargo\nMaria,Analista de RH\nJoao,Coordenador"));
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("text/csv");
+        form.Add(fileContent, "file", "colaboradores.csv");
+
+        var response = await client.PostAsync("/api/v1/documents/suggest-metadata", form);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await response.Content.ReadFromJsonAsync<DocumentMetadataSuggestionDto>(JsonOptions);
+        payload.Should().NotBeNull();
+        payload!.SuggestedTitle.Should().NotBeNullOrWhiteSpace();
+        payload.PreviewText.Should().Contain("Maria,Analista de RH");
+    }
+
+    [Fact]
     public async Task ReindexEndpoint_ShouldReturn403_WhenRoleIsNotAdministrative()
     {
         using var client = _factory.CreateClient();

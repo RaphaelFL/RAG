@@ -16,20 +16,37 @@ namespace Chatbot.Api.Controllers;
 [Produces("application/json")]
 public class DocumentsController : ControllerBase
 {
-    private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".pdf", ".docx", ".txt", ".md", ".html", ".htm", ".png", ".jpg", ".jpeg"
+        ".pdf", ".docx", ".png", ".jpg", ".jpeg"
     };
 
-    private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".txt", ".md", ".html", ".htm", ".csv", ".tsv", ".json", ".xml", ".yaml", ".yml", ".log", ".ini", ".cfg", ".sql"
+    };
+
+    private static readonly HashSet<string> DangerousExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".dll", ".msi", ".bat", ".cmd", ".com", ".scr", ".ps1", ".jar", ".js", ".vbs", ".wsf", ".sh"
+    };
+
+    private static readonly HashSet<string> BinaryContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "text/plain",
-        "text/markdown",
-        "text/html",
         "image/png",
         "image/jpeg"
+    };
+
+    private static readonly HashSet<string> TextApplicationContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/json",
+        "application/xml",
+        "application/yaml",
+        "application/x-yaml",
+        "application/sql",
+        "text/xml"
     };
 
     private readonly IIngestionPipeline _ingestionPipeline;
@@ -322,56 +339,148 @@ public class DocumentsController : ControllerBase
     private static void ValidateUpload(IFormFile file)
     {
         var extension = Path.GetExtension(file.FileName);
-        if (string.IsNullOrWhiteSpace(extension) || !AllowedExtensions.Contains(extension))
+        if (HasDangerousExtension(extension))
         {
             throw new InvalidOperationException("File extension is not supported.");
         }
 
-        if (!string.IsNullOrWhiteSpace(file.ContentType) && !AllowedContentTypes.Contains(file.ContentType))
-        {
-            throw new InvalidOperationException("File content type is not supported.");
-        }
-
         using var stream = file.OpenReadStream();
-        Span<byte> header = stackalloc byte[8];
+        Span<byte> header = stackalloc byte[512];
         var bytesRead = stream.Read(header);
 
-        if (!HasValidSignature(extension, header[..bytesRead]))
+        if (!IsSupportedUpload(extension, file.ContentType, header[..bytesRead]))
         {
-            throw new InvalidOperationException("File signature does not match the declared file type.");
+            throw new InvalidOperationException("File type is not supported.");
         }
     }
 
-    private static bool HasValidSignature(string extension, ReadOnlySpan<byte> header)
+    private static bool IsSupportedUpload(string extension, string? contentType, ReadOnlySpan<byte> header)
     {
         if (header.Length == 0)
         {
             return false;
         }
 
-        return extension.ToLowerInvariant() switch
+        if (IsBinaryDocument(extension, contentType))
         {
-            ".pdf" => header.Length >= 4 && header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46,
-            ".docx" => header.Length >= 4 && header[0] == 0x50 && header[1] == 0x4B,
-            ".png" => header.Length >= 8 && header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47,
-            ".jpg" or ".jpeg" => header.Length >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
-            ".txt" or ".md" or ".html" or ".htm" => IsTextLike(header),
-            _ => false
-        };
+            return HasValidSignature(extension, contentType, header);
+        }
+
+        return IsKnownTextExtension(extension)
+            || IsTextContentType(contentType)
+            || IsTextLike(header);
+    }
+
+    private static bool HasValidSignature(string extension, string? contentType, ReadOnlySpan<byte> header)
+    {
+        if (header.Length == 0)
+        {
+            return false;
+        }
+
+        if (MatchesBinaryType(extension, contentType, ".pdf", "application/pdf"))
+        {
+            return header.Length >= 4 && header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46;
+        }
+
+        if (MatchesBinaryType(extension, contentType, ".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+        {
+            return header.Length >= 4 && header[0] == 0x50 && header[1] == 0x4B;
+        }
+
+        if (MatchesBinaryType(extension, contentType, ".png", "image/png"))
+        {
+            return header.Length >= 8 && header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47;
+        }
+
+        if (MatchesBinaryType(extension, contentType, ".jpg", "image/jpeg") || MatchesBinaryType(extension, contentType, ".jpeg", "image/jpeg"))
+        {
+            return header.Length >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF;
+        }
+
+        return false;
+    }
+
+    private static bool MatchesBinaryType(string extension, string? contentType, string expectedExtension, string expectedContentType)
+    {
+        return string.Equals(extension, expectedExtension, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(contentType, expectedContentType, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBinaryDocument(string extension, string? contentType)
+    {
+        return BinaryExtensions.Contains(extension)
+            || (!string.IsNullOrWhiteSpace(contentType) && BinaryContentTypes.Contains(contentType));
+    }
+
+    private static bool IsKnownTextExtension(string extension)
+    {
+        return TextExtensions.Contains(extension);
+    }
+
+    private static bool IsTextContentType(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            return false;
+        }
+
+        return contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+            || TextApplicationContentTypes.Contains(contentType);
+    }
+
+    private static bool HasDangerousExtension(string extension)
+    {
+        return !string.IsNullOrWhiteSpace(extension) && DangerousExtensions.Contains(extension);
     }
 
     private static bool IsTextLike(ReadOnlySpan<byte> header)
     {
+        if (header.Length >= 3 && header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF)
+        {
+            return true;
+        }
+
+        if (header.Length >= 2)
+        {
+            var hasUtf16Bom = (header[0] == 0xFF && header[1] == 0xFE) || (header[0] == 0xFE && header[1] == 0xFF);
+            if (hasUtf16Bom)
+            {
+                return true;
+            }
+        }
+
+        var printable = 0;
+        var alphaNumeric = 0;
+
         foreach (var value in header)
         {
             if (value == 0)
             {
                 return false;
             }
+
+            if (value is 9 or 10 or 13 || value is >= 32 and <= 126 || value >= 160)
+            {
+                printable++;
+            }
+
+            if ((value is >= (byte)'0' and <= (byte)'9')
+                || (value is >= (byte)'A' and <= (byte)'Z')
+                || (value is >= (byte)'a' and <= (byte)'z'))
+            {
+                alphaNumeric++;
+            }
         }
 
         var preview = Encoding.UTF8.GetString(header);
-        return !string.IsNullOrWhiteSpace(preview);
+        if (string.IsNullOrWhiteSpace(preview))
+        {
+            return false;
+        }
+
+        var printableRatio = printable / (double)header.Length;
+        return printableRatio >= 0.85 && (alphaNumeric > 0 || printable == header.Length);
     }
 
     private ActionResult? ValidateIncomingFile(IFormFile file)

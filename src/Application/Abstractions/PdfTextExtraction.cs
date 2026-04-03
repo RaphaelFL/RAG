@@ -67,14 +67,24 @@ public static partial class PdfTextExtraction
             return false;
         }
 
-        var noiseHits = PdfNoiseMarkers.Count(marker => normalized.Contains(marker, StringComparison.OrdinalIgnoreCase));
-        if (noiseHits == 0)
+        if (normalized.Any(character => char.IsControl(character) && !char.IsWhiteSpace(character)))
         {
-            return false;
+            return true;
         }
 
+        var noiseHits = PdfNoiseMarkers.Count(marker => normalized.Contains(marker, StringComparison.OrdinalIgnoreCase));
         var letterRatio = normalized.Count(char.IsLetter) / (double)normalized.Length;
-        return noiseHits >= 2 || letterRatio < 0.45;
+        if (noiseHits >= 2)
+        {
+            return true;
+        }
+
+        if (noiseHits == 1 && letterRatio < 0.45)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static bool LooksLikePdf(byte[] bytes)

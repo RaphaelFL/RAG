@@ -14,6 +14,8 @@ public interface IAzureAccessTokenProvider
 
 public sealed class AzureAccessTokenProvider : IAzureAccessTokenProvider
 {
+    private const string EnableDeviceCodeEnvironmentVariable = "CHATBOT_ENABLE_DEVICE_CODE_AUTH";
+
     private readonly ExternalProviderClientOptions _options;
     private readonly IReadOnlyList<(string Name, TokenCredential Credential)> _credentials;
     private readonly bool _continueOnDevelopmentCredentialFailures;
@@ -77,15 +79,19 @@ public sealed class AzureAccessTokenProvider : IAzureAccessTokenProvider
             };
         }
 
-        return new (string Name, TokenCredential Credential)[]
+        var credentials = new List<(string Name, TokenCredential Credential)>
         {
             ("EnvironmentCredential", new EnvironmentCredential()),
             ("SharedTokenCacheCredential", new SharedTokenCacheCredential()),
             ("VisualStudioCredential", new VisualStudioCredential()),
             ("AzureCliCredential", new AzureCliCredential()),
             ("AzurePowerShellCredential", new AzurePowerShellCredential()),
-            ("AzureDeveloperCliCredential", new AzureDeveloperCliCredential()),
-            ("DeviceCodeCredential", new DeviceCodeCredential(new DeviceCodeCredentialOptions
+            ("AzureDeveloperCliCredential", new AzureDeveloperCliCredential())
+        };
+
+        if (IsDeviceCodeAuthenticationEnabled())
+        {
+            credentials.Add(("DeviceCodeCredential", new DeviceCodeCredential(new DeviceCodeCredentialOptions
             {
                 DeviceCodeCallback = (deviceCodeInfo, _) =>
                 {
@@ -96,7 +102,17 @@ public sealed class AzureAccessTokenProvider : IAzureAccessTokenProvider
                     Console.WriteLine($"Autenticacao Azure necessaria. Acesse {deviceCodeInfo.VerificationUri} e informe o codigo {deviceCodeInfo.UserCode}.");
                     return Task.CompletedTask;
                 }
-            }))
-        };
+            })));
+        }
+
+        return credentials;
+    }
+
+    private static bool IsDeviceCodeAuthenticationEnabled()
+    {
+        return string.Equals(
+            Environment.GetEnvironmentVariable(EnableDeviceCodeEnvironmentVariable),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
     }
 }

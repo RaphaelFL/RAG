@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Chatbot.Application.Abstractions;
 using Chatbot.Application.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace Chatbot.Application.Services;
 
@@ -13,7 +14,7 @@ public sealed class DocumentMetadataSuggestionService : IDocumentMetadataSuggest
         ("financeiro", ["financeiro", "reembolso", "pagamento", "orcamento", "despesa", "fiscal", "fatura", "nota", "contabil"]),
         ("juridico", ["juridico", "contrato", "clausula", "parecer", "compliance", "lgpd", "confidencialidade", "termo"]),
         ("seguranca", ["seguranca", "incidente", "acesso", "senha", "credencial", "vulnerabilidade", "risco"]),
-        ("rh", ["rh", "ferias", "beneficio", "colaborador", "folha", "admissao", "desligamento", "treinamento"]),
+        ("rh", ["rh", "ferias", "beneficio", "colaborador", "folha", "admissao", "admissional", "desligamento", "demissional", "treinamento", "aso", "exame"]),
         ("operacoes", ["operacao", "processo", "procedimento", "atendimento", "suporte", "sla", "execucao", "fluxo"]),
         ("politicas", ["politica", "politicas", "diretriz", "norma", "manual", "regulamento", "governanca", "padrao"])
     ];
@@ -25,15 +26,37 @@ public sealed class DocumentMetadataSuggestionService : IDocumentMetadataSuggest
     };
 
     private readonly IDocumentTextExtractor _documentTextExtractor;
+    private readonly ILogger<DocumentMetadataSuggestionService> _logger;
 
-    public DocumentMetadataSuggestionService(IDocumentTextExtractor documentTextExtractor)
+    public DocumentMetadataSuggestionService(
+        IDocumentTextExtractor documentTextExtractor,
+        ILogger<DocumentMetadataSuggestionService> logger)
     {
         _documentTextExtractor = documentTextExtractor;
+        _logger = logger;
     }
 
     public async Task<DocumentMetadataSuggestionDto> SuggestAsync(IngestDocumentCommand command, CancellationToken ct)
     {
-        var extraction = await _documentTextExtractor.ExtractAsync(command, ct);
+        DocumentTextExtractionResultDto extraction;
+        try
+        {
+            extraction = await _documentTextExtractor.ExtractAsync(command, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (IsPdfDocument(command))
+        {
+            _logger.LogWarning(ex, "Falha ao extrair texto de PDF para sugestao de metadata. Aplicando fallback por nome do arquivo: {fileName}", command.FileName);
+            extraction = new DocumentTextExtractionResultDto
+            {
+                Text = string.Empty,
+                Strategy = "filename-fallback"
+            };
+        }
+
         var extractedText = NormalizeLineEndings(extraction.Text);
         var normalizedText = NormalizeWhitespace(extractedText);
         var suggestedTitle = SuggestTitle(command.FileName, extractedText);
@@ -219,5 +242,11 @@ public sealed class DocumentMetadataSuggestionService : IDocumentMetadataSuggest
         }
 
         return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    private static bool IsPdfDocument(IngestDocumentCommand command)
+    {
+        return string.Equals(Path.GetExtension(command.FileName), ".pdf", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(command.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
     }
 }

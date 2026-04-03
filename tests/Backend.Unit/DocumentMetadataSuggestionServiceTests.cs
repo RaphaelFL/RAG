@@ -2,6 +2,7 @@ using System.Text;
 using Chatbot.Application.Abstractions;
 using Chatbot.Application.Services;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Backend.Unit;
@@ -12,7 +13,8 @@ public class DocumentMetadataSuggestionServiceTests
     public async Task SuggestAsync_ShouldInferArchitectureMetadata_FromExtractedText()
     {
         var sut = new DocumentMetadataSuggestionService(new StubDocumentTextExtractor(
-            "ARQUITETURA DE INTEGRACAO CORPORATIVA\nEste documento descreve integracao entre APIs, servicos e sistema legado."));
+            "ARQUITETURA DE INTEGRACAO CORPORATIVA\nEste documento descreve integracao entre APIs, servicos e sistema legado."),
+            NullLogger<DocumentMetadataSuggestionService>.Instance);
 
         var result = await sut.SuggestAsync(new IngestDocumentCommand
         {
@@ -33,7 +35,9 @@ public class DocumentMetadataSuggestionServiceTests
     [Fact]
     public async Task SuggestAsync_ShouldFallbackToFileName_WhenNoExtractedTextExists()
     {
-        var sut = new DocumentMetadataSuggestionService(new StubDocumentTextExtractor(string.Empty));
+        var sut = new DocumentMetadataSuggestionService(
+            new StubDocumentTextExtractor(string.Empty),
+            NullLogger<DocumentMetadataSuggestionService>.Instance);
 
         var result = await sut.SuggestAsync(new IngestDocumentCommand
         {
@@ -46,6 +50,28 @@ public class DocumentMetadataSuggestionServiceTests
 
         result.SuggestedTitle.Should().Be("Manual Reembolso 2026");
         result.SuggestedTags.Should().Contain(tag => tag.Equals("reembolso", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task SuggestAsync_ShouldFallbackToFileName_WhenPdfExtractionFails()
+    {
+        var sut = new DocumentMetadataSuggestionService(
+            new ThrowingDocumentTextExtractor(new InvalidOperationException("ocr indisponivel")),
+            NullLogger<DocumentMetadataSuggestionService>.Instance);
+
+        var result = await sut.SuggestAsync(new IngestDocumentCommand
+        {
+            DocumentId = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            FileName = "aso_demissional_2026.pdf",
+            ContentType = "application/pdf",
+            Content = new MemoryStream(Array.Empty<byte>())
+        }, CancellationToken.None);
+
+        result.SuggestedTitle.Should().Be("Aso Demissional 2026");
+        result.SuggestedCategory.Should().Be("rh");
+        result.PreviewText.Should().BeEmpty();
+        result.Strategy.Should().Be("heuristic-filename-fallback");
     }
 
     private sealed class StubDocumentTextExtractor : IDocumentTextExtractor
@@ -64,6 +90,21 @@ public class DocumentMetadataSuggestionServiceTests
                 Text = _text,
                 Strategy = "direct"
             });
+        }
+    }
+
+    private sealed class ThrowingDocumentTextExtractor : IDocumentTextExtractor
+    {
+        private readonly Exception _exception;
+
+        public ThrowingDocumentTextExtractor(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        public Task<DocumentTextExtractionResultDto> ExtractAsync(IngestDocumentCommand command, CancellationToken ct)
+        {
+            throw _exception;
         }
     }
 }
