@@ -3,6 +3,7 @@ using Chatbot.Application.Abstractions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using System.Net;
 using System.Text.Json;
 
 namespace Chatbot.Api.Controllers;
@@ -83,6 +84,16 @@ public class ChatController : ControllerBase
                 TraceId = HttpContext.TraceIdentifier
             });
         }
+        catch (OperationCanceledException ex) when (!WasRequestCancelled(cancellationToken))
+        {
+            _logger.LogWarning(ex, "Chat provider timed out for session {sessionId}", request.SessionId);
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new ErrorResponseDto
+            {
+                Code = "provider_timeout",
+                Message = "O provedor de IA excedeu o tempo limite da operacao.",
+                TraceId = HttpContext.TraceIdentifier
+            });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error in SendMessage");
@@ -121,22 +132,45 @@ public class ChatController : ControllerBase
                 await Response.Body.FlushAsync(cancellationToken);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (WasRequestCancelled(cancellationToken))
         {
             _logger.LogInformation("Stream cancelled for session {sessionId}", request.SessionId);
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger.LogWarning(ex, "Chat provider timed out during stream for session {sessionId}", request.SessionId);
+            await WriteStreamErrorAsync("provider_timeout", "O provedor de IA excedeu o tempo limite da operacao.", cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in stream for session {sessionId}", request.SessionId);
-            var errorEvent = JsonSerializer.Serialize(new StreamErrorEventDto
-            {
-                Code = "stream_error",
-                Message = "An error occurred during streaming",
-                TraceId = HttpContext.TraceIdentifier
-            }, StreamingJsonOptions);
-            await Response.WriteAsync($"event: error\r\n");
-            await Response.WriteAsync($"data: {errorEvent}\r\n\r\n");
+            await WriteStreamErrorAsync("stream_error", "An error occurred during streaming", cancellationToken);
         }
+    }
+
+    private bool WasRequestCancelled(CancellationToken cancellationToken)
+    {
+        return cancellationToken.IsCancellationRequested || HttpContext.RequestAborted.IsCancellationRequested;
+    }
+
+    private async Task WriteStreamErrorAsync(string code, string message, CancellationToken cancellationToken)
+    {
+        if (WasRequestCancelled(cancellationToken))
+        {
+            return;
+        }
+
+        var errorEvent = JsonSerializer.Serialize(new StreamErrorEventDto
+        {
+            Code = code,
+            Message = message,
+            TraceId = HttpContext.TraceIdentifier
+        }, StreamingJsonOptions);
+
+        Response.StatusCode = (int)HttpStatusCode.GatewayTimeout;
+        await Response.WriteAsync($"event: error\r\n");
+        await Response.WriteAsync($"data: {errorEvent}\r\n\r\n");
+        await Response.Body.FlushAsync(cancellationToken);
     }
 
     [HttpGet("sessions/{sessionId:guid}")]

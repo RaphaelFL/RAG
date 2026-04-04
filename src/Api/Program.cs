@@ -225,6 +225,16 @@ builder.Services.AddOptions<OperationalResilienceOptions>()
     .ValidateOnStart();
 builder.Services.AddOptions<ProviderExecutionModeOptions>()
     .Bind(builder.Configuration.GetSection("ProviderExecutionModeOptions"))
+    .Validate(options => !options.PreferMockProviders || options.AllowMockProviders, "ProviderExecutionModeOptions:PreferMockProviders exige AllowMockProviders=true.")
+    .Validate(options => !options.PreferInMemoryInfrastructure || options.AllowInMemoryInfrastructure, "ProviderExecutionModeOptions:PreferInMemoryInfrastructure exige AllowInMemoryInfrastructure=true.")
+    .Validate(options => !options.PreferLocalPersistentInfrastructure || options.AllowInMemoryInfrastructure, "ProviderExecutionModeOptions:PreferLocalPersistentInfrastructure exige AllowInMemoryInfrastructure=true.")
+    .ValidateOnStart();
+builder.Services.AddOptions<LocalPersistenceOptions>()
+    .Bind(builder.Configuration.GetSection("LocalPersistenceOptions"))
+    .Validate(options => !string.IsNullOrWhiteSpace(options.BasePath), "LocalPersistenceOptions:BasePath e obrigatorio.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.BlobRootDirectory), "LocalPersistenceOptions:BlobRootDirectory e obrigatorio.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.DocumentCatalogFileName), "LocalPersistenceOptions:DocumentCatalogFileName e obrigatorio.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.SearchIndexFileName), "LocalPersistenceOptions:SearchIndexFileName e obrigatorio.")
     .ValidateOnStart();
 builder.Services.AddOptions<CacheOptions>()
     .Bind(builder.Configuration.GetSection("CacheOptions"))
@@ -241,9 +251,9 @@ builder.Services.AddOptions<RedisSettings>()
 builder.Services.AddOptions<ExternalProviderClientOptions>()
     .Bind(builder.Configuration.GetRequiredSection("ExternalProviderClientOptions"))
     .Validate(options => options.TimeoutSeconds > 0, "ExternalProviderClientOptions:TimeoutSeconds deve ser maior que zero.")
-    .Validate(options => !string.IsNullOrWhiteSpace(options.AzureOpenAiApiVersion), "ExternalProviderClientOptions:AzureOpenAiApiVersion e obrigatorio.")
-    .Validate(options => !string.IsNullOrWhiteSpace(options.AzureSearchApiVersion), "ExternalProviderClientOptions:AzureSearchApiVersion e obrigatorio.")
-    .Validate(options => !string.IsNullOrWhiteSpace(options.AzureDocumentIntelligenceApiVersion), "ExternalProviderClientOptions:AzureDocumentIntelligenceApiVersion e obrigatorio.")
+    .Validate(options => !ExternalProviderClientOptions.HasConfiguredValue(options.AzureOpenAiBaseUrl) || !string.IsNullOrWhiteSpace(options.AzureOpenAiApiVersion), "ExternalProviderClientOptions:AzureOpenAiApiVersion e obrigatorio quando Azure OpenAI estiver configurado.")
+    .Validate(options => !ExternalProviderClientOptions.HasConfiguredValue(options.AzureSearchBaseUrl) || !string.IsNullOrWhiteSpace(options.AzureSearchApiVersion), "ExternalProviderClientOptions:AzureSearchApiVersion e obrigatorio quando Azure Search estiver configurado.")
+    .Validate(options => !ExternalProviderClientOptions.HasConfiguredValue(options.AzureDocumentIntelligenceBaseUrl) || !string.IsNullOrWhiteSpace(options.AzureDocumentIntelligenceApiVersion), "ExternalProviderClientOptions:AzureDocumentIntelligenceApiVersion e obrigatorio quando Azure Document Intelligence estiver configurado.")
     .ValidateOnStart();
 
 builder.Services

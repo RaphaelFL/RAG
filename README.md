@@ -10,11 +10,13 @@ O projeto já implementa o fluxo local de MVP pedido pelos arquivos .ia:
 - frontend em Next.js 15 + React 19 + TypeScript;
 - autenticação local por bearer/header para desenvolvimento;
 - chat não streaming e streaming SSE;
+- stack local sem dependência operacional de Azure para chat, embeddings, OCR local e persistência básica;
 - upload, polling de status e reindexação;
 - prompt templates versionados;
 - prompt injection detection básica;
 - OCR com provider real por configuração;
 - jobs em background com worker hospedado;
+- execução lado a lado com OpenClaude usando Ollama via endpoint OpenAI-compatible;
 - OpenTelemetry, Serilog e Polly;
 - testes unitários, integração, componente e E2E.
 
@@ -50,6 +52,9 @@ O que ainda é backlog estrutural:
 - .NET 8 SDK
 - Node.js 20+
 - npm 10+
+- Ollama
+- modelos Ollama `qwen2.5-coder:7b`, `nomic-embed-text` e `llava`
+- ripgrep (`rg`) recomendado para busca completa no OpenClaude
 - Docker opcional
 
 ## Como rodar
@@ -60,7 +65,19 @@ O que ainda é backlog estrutural:
 dotnet restore ChatbotApi.slnx
 ```
 
-### 2. Subir a API localmente
+### 2. Preparar o Ollama local
+
+Antes do primeiro uso local:
+
+```bash
+ollama pull qwen2.5-coder:7b
+ollama pull nomic-embed-text
+ollama pull llava
+```
+
+O backend local usa por padrão o endpoint OpenAI-compatible do Ollama em `http://localhost:11434/v1`.
+
+### 3. Subir a API localmente
 
 ```bash
 .\scripts\run-api.ps1
@@ -68,7 +85,9 @@ dotnet restore ChatbotApi.slnx
 
 No ambiente local, o script sobe a API em https://localhost:15213 e http://localhost:15214.
 
-### 3. Subir o frontend
+O health check principal fica em http://localhost:15214/health.
+
+### 4. Subir o frontend
 
 ```bash
 cd web
@@ -76,15 +95,57 @@ npm install
 npm run dev
 ```
 
-O frontend sobe na URL definida pelo runtime do Next.js no ambiente local.
+O frontend sobe em http://localhost:3000 no ambiente local.
 
-### 4. Rodar com Docker
+### 4.1. Rodar agentes externos ao lado do backend
+
+Para subir OpenClaude em paralelo com a API local, use:
+
+```bash
+.\scripts\run-agent-stack.ps1
+```
+
+O guia operacional dessa stack fica em [EXTERNAL_AGENTS.md](EXTERNAL_AGENTS.md).
+
+O `scripts/run-openclaude.ps1` usa Ollama por padrão com:
+
+- base URL `http://localhost:11434/v1`
+- modelo de chat `qwen2.5-coder:7b`
+
+### 5. Portas da stack local
+
+- frontend: `http://localhost:3000`
+- backend HTTP: `http://localhost:15214`
+- backend HTTPS: `https://localhost:15213`
+- Ollama OpenAI-compatible: `http://localhost:11434/v1`
+
+### 6. Rodar com Docker
 
 ```bash
 docker compose up --build
 ```
 
 O compose atual sobe apenas a API em container Linux, publicada em http://localhost:5000.
+
+## Como parar
+
+### Backend
+
+```bash
+.\scripts\stop-chatbot-api.ps1
+```
+
+### Frontend e OpenClaude
+
+Encerre as janelas de terminal abertas por `npm run dev`, `scripts/run-openclaude.ps1` ou `scripts/run-agent-stack.ps1`.
+
+### Ollama
+
+Se ele estiver rodando como processo local na sua sessão:
+
+```powershell
+Get-Process -Name ollama -ErrorAction SilentlyContinue | Stop-Process -Force
+```
 
 ## Autenticação local de desenvolvimento
 
@@ -206,6 +267,8 @@ As principais seções estão em [src/Api/appsettings.json](src/Api/appsettings.
 - `ExternalProviderClientOptions:TimeoutSeconds`
 - `ExternalProviderClientOptions:*ApiVersion`
 
+No preset local atual, `ExternalProviderClientOptions:TimeoutSeconds` foi elevado para 180 segundos porque modelos locais no Ollama podem demorar mais para responder do que providers hospedados.
+
 ### Saneamento dos arquivos versionados
 
 - `src/Api/appsettings.json` pode ser versionado desde que contenha apenas estrutura, placeholders ou valores operacionais nao sensiveis
@@ -275,9 +338,13 @@ Cobertura validada atualmente inclui:
 
 O frontend conversa apenas com a API HTTP. Não chama Azure diretamente. O token bearer digitado na UI não é persistido em storage do navegador. A UI já aplica bloqueio visual por papel para upload e reindexação.
 
+No ambiente local, o frontend consome o backend pelo proxy interno do Next em `/api/proxy` e espera a API em `http://localhost:15214`.
+
 ## Limitações conhecidas
 
-- sem `.env` preenchido, partes da stack externa continuam em fallback mock/in-memory;
+- o stream atual do chat continua pseudo-streaming: o backend emite `started` cedo, mas os `delta` dependem da conclusão da chamada ao modelo;
+- modelos locais no Ollama podem responder de forma perceptivelmente mais lenta do que providers hospedados;
+- PDFs escaneados sem texto incorporado ainda dependem do caminho OCR local e podem exigir mais ajuste conforme o arquivo;
 - GraphRAG permanece desligado no MVP;
 - a camada agentic do baseline ainda não foi materializada.
 
