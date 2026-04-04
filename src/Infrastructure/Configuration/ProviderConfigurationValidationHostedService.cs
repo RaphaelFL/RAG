@@ -35,11 +35,11 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
     {
         var errors = new List<string>();
 
-        ValidateAzureOpenAiChat(errors);
-        ValidateAzureOpenAiEmbeddings(errors);
+        ValidateChat(errors);
+        ValidateEmbeddings(errors);
         ValidateAzureSearch(errors);
         ValidateBlobStorage(errors);
-        ValidateAzureDocumentIntelligence(errors);
+        ValidateOcr(errors);
         ValidateGoogleVision(errors);
 
         if (errors.Count > 0)
@@ -52,9 +52,26 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    private void ValidateAzureOpenAiChat(List<string> errors)
+    private void ValidateChat(List<string> errors)
     {
-        var fields = new[]
+        var openAiCompatibleFields = new[]
+        {
+            _providerOptions.OpenAiCompatibleBaseUrl,
+            _providerOptions.OpenAiCompatibleApiKey,
+            _providerOptions.OpenAiCompatibleChatModel
+        };
+
+        if (HasAnyConfiguredValue(openAiCompatibleFields))
+        {
+            if (!_providerOptions.HasOpenAiCompatibleChatConfiguration(_chatOptions.Model))
+            {
+                errors.Add("OpenAI-compatible chat esta parcialmente configurado. Preencha ExternalProviderClientOptions:OpenAiCompatibleBaseUrl e ExternalProviderClientOptions:OpenAiCompatibleChatModel ou ChatModelOptions:Model.");
+            }
+
+            return;
+        }
+
+        var azureFields = new[]
         {
             _providerOptions.AzureOpenAiBaseUrl,
             _providerOptions.AzureOpenAiApiKey,
@@ -62,11 +79,11 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
             _chatOptions.Deployment
         };
 
-        if (!HasAnyConfiguredValue(fields))
+        if (!HasAnyConfiguredValue(azureFields))
         {
             if (!_executionModeOptions.AllowMockProviders)
             {
-                errors.Add("Azure OpenAI chat nao esta configurado e mocks estao desabilitados. Preencha ExternalProviderClientOptions:AzureOpenAiBaseUrl, ExternalProviderClientOptions:AzureOpenAiApiKey e ExternalProviderClientOptions:AzureOpenAiChatDeployment ou ChatModelOptions:Deployment.");
+                errors.Add("Nenhum provider de chat esta configurado e mocks estao desabilitados. Preencha OpenAiCompatibleBaseUrl/OpenAiCompatibleChatModel ou a configuracao de Azure OpenAI.");
             }
 
             return;
@@ -80,9 +97,26 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
         }
     }
 
-    private void ValidateAzureOpenAiEmbeddings(List<string> errors)
+    private void ValidateEmbeddings(List<string> errors)
     {
-        var fields = new[]
+        var openAiCompatibleFields = new[]
+        {
+            _providerOptions.OpenAiCompatibleBaseUrl,
+            _providerOptions.OpenAiCompatibleApiKey,
+            _providerOptions.OpenAiCompatibleEmbeddingModel
+        };
+
+        if (HasAnyConfiguredValue(openAiCompatibleFields))
+        {
+            if (!_providerOptions.HasOpenAiCompatibleEmbeddingConfiguration(_embeddingOptions.Model))
+            {
+                errors.Add("OpenAI-compatible embeddings esta parcialmente configurado. Preencha ExternalProviderClientOptions:OpenAiCompatibleBaseUrl e ExternalProviderClientOptions:OpenAiCompatibleEmbeddingModel ou EmbeddingOptions:Model.");
+            }
+
+            return;
+        }
+
+        var azureFields = new[]
         {
             _providerOptions.AzureOpenAiBaseUrl,
             _providerOptions.AzureOpenAiApiKey,
@@ -90,11 +124,11 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
             _embeddingOptions.Deployment
         };
 
-        if (!HasAnyConfiguredValue(fields))
+        if (!HasAnyConfiguredValue(azureFields))
         {
             if (!_executionModeOptions.AllowMockProviders)
             {
-                errors.Add("Azure OpenAI embeddings nao esta configurado e mocks estao desabilitados. Preencha ExternalProviderClientOptions:AzureOpenAiBaseUrl, ExternalProviderClientOptions:AzureOpenAiApiKey e ExternalProviderClientOptions:AzureOpenAiEmbeddingDeployment ou EmbeddingOptions:Deployment.");
+                errors.Add("Nenhum provider de embeddings esta configurado e mocks estao desabilitados. Preencha OpenAiCompatibleBaseUrl/OpenAiCompatibleEmbeddingModel ou a configuracao de Azure OpenAI.");
             }
 
             return;
@@ -110,6 +144,21 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
     private void ValidateAzureSearch(List<string> errors)
     {
+        if (_executionModeOptions.PreferLocalPersistentInfrastructure)
+        {
+            return;
+        }
+
+        if (_executionModeOptions.PreferInMemoryInfrastructure)
+        {
+            if (!_executionModeOptions.AllowInMemoryInfrastructure)
+            {
+                errors.Add("Modo local para Search foi solicitado, mas infraestrutura em memoria esta desabilitada.");
+            }
+
+            return;
+        }
+
         var connectionConfigured = HasAnyConfiguredValue(new[]
         {
             _providerOptions.AzureSearchBaseUrl,
@@ -136,6 +185,21 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
 
     private void ValidateBlobStorage(List<string> errors)
     {
+        if (_executionModeOptions.PreferLocalPersistentInfrastructure)
+        {
+            return;
+        }
+
+        if (_executionModeOptions.PreferInMemoryInfrastructure)
+        {
+            if (!_executionModeOptions.AllowInMemoryInfrastructure)
+            {
+                errors.Add("Modo local para Blob Storage foi solicitado, mas infraestrutura em memoria esta desabilitada.");
+            }
+
+            return;
+        }
+
         var connectionConfigured = ExternalProviderClientOptions.HasConfiguredValue(_blobOptions.ConnectionString);
         var containerConfigured = !string.IsNullOrWhiteSpace(_blobOptions.ContainerName);
         if (!connectionConfigured && containerConfigured)
@@ -154,8 +218,34 @@ public sealed class ProviderConfigurationValidationHostedService : IHostedServic
         }
     }
 
-    private void ValidateAzureDocumentIntelligence(List<string> errors)
+    private void ValidateOcr(List<string> errors)
     {
+        if (_executionModeOptions.PreferLocalOcr)
+        {
+            if (_providerOptions.HasOpenAiCompatibleVisionConfiguration())
+            {
+                return;
+            }
+
+            if (_executionModeOptions.AllowMockProviders)
+            {
+                return;
+            }
+
+            errors.Add("OCR local foi solicitado, mas ExternalProviderClientOptions:OpenAiCompatibleVisionModel nao esta configurado e mocks estao desabilitados.");
+            return;
+        }
+
+        if (_executionModeOptions.PreferMockProviders)
+        {
+            if (!_executionModeOptions.AllowMockProviders)
+            {
+                errors.Add("Modo local para OCR foi solicitado, mas mocks estao desabilitados.");
+            }
+
+            return;
+        }
+
         var connectionConfigured = HasAnyConfiguredValue(new[]
         {
             _providerOptions.AzureDocumentIntelligenceBaseUrl,

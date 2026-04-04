@@ -21,7 +21,13 @@ public static class InfrastructureServiceRegistration
     {
         services.AddSingleton<IAzureAccessTokenProvider, AzureAccessTokenProvider>();
         services.AddSingleton<IApplicationCache, ApplicationCache>();
-        services.AddSingleton<IDocumentCatalog, InMemoryDocumentCatalog>();
+        services.AddSingleton<IDocumentCatalog>(serviceProvider =>
+        {
+            var executionMode = serviceProvider.GetRequiredService<IOptions<ProviderExecutionModeOptions>>().Value;
+            return executionMode.PreferLocalPersistentInfrastructure
+                ? ActivatorUtilities.CreateInstance<FileSystemDocumentCatalog>(serviceProvider)
+                : ActivatorUtilities.CreateInstance<InMemoryDocumentCatalog>(serviceProvider);
+        });
         services.AddSingleton<IBackgroundJobQueue, InMemoryBackgroundJobQueue>();
         services.AddSingleton<IChatSessionStore, InMemoryChatSessionStore>();
         services.AddSingleton<ISecurityAuditLogger, SecurityAuditLogger>();
@@ -34,6 +40,8 @@ public static class InfrastructureServiceRegistration
         services.AddSingleton<IPromptInjectionDetector, PromptInjectionDetector>();
         services.AddSingleton<IMalwareScanner, SignatureMalwareScanner>();
         services.AddHostedService<ProviderConfigurationValidationHostedService>();
+        services.AddHttpClient("OpenAICompatible")
+            .ConfigureHttpClient(ConfigureOpenAiCompatibleClient);
         services.AddHttpClient("AzureOpenAI")
             .ConfigureHttpClient(ConfigureAzureOpenAiClient);
         services.AddHttpClient("AzureSearch")
@@ -45,18 +53,27 @@ public static class InfrastructureServiceRegistration
         services.AddScoped<IChatCompletionProvider>(serviceProvider =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<ExternalProviderClientOptions>>().Value;
+            var chatOptions = serviceProvider.GetRequiredService<IOptions<ChatModelOptions>>().Value;
             var executionMode = serviceProvider.GetRequiredService<IOptions<ProviderExecutionModeOptions>>().Value;
-            return options.HasAzureOpenAiChatConfiguration()
+            return options.HasOpenAiCompatibleChatConfiguration(chatOptions.Model)
+                ? ActivatorUtilities.CreateInstance<OpenAiCompatibleChatCompletionProvider>(serviceProvider)
+                : options.HasAzureOpenAiChatConfiguration()
                 ? ActivatorUtilities.CreateInstance<AzureOpenAiChatCompletionProvider>(serviceProvider)
                 : executionMode.AllowMockProviders
                     ? ActivatorUtilities.CreateInstance<MockChatCompletionProvider>(serviceProvider)
-                    : throw new InvalidOperationException("Azure OpenAI chat nao esta configurado e o uso de mock foi desabilitado.");
+                    : throw new InvalidOperationException("Nenhum provider de chat real esta configurado e o uso de mock foi desabilitado.");
         });
         services.AddScoped<IOcrProvider>(serviceProvider =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<ExternalProviderClientOptions>>().Value;
             var executionMode = serviceProvider.GetRequiredService<IOptions<ProviderExecutionModeOptions>>().Value;
-            return options.HasAzureDocumentIntelligenceConfiguration()
+            return executionMode.PreferLocalOcr && options.HasOpenAiCompatibleVisionConfiguration()
+                ? ActivatorUtilities.CreateInstance<LocalVisionOcrProvider>(serviceProvider)
+                : executionMode.PreferMockProviders
+                ? executionMode.AllowMockProviders
+                    ? ActivatorUtilities.CreateInstance<MockOcrProvider>(serviceProvider)
+                    : throw new InvalidOperationException("Modo local para OCR foi solicitado, mas mocks estao desabilitados.")
+                : options.HasAzureDocumentIntelligenceConfiguration()
                 ? ActivatorUtilities.CreateInstance<AzureDocumentIntelligenceOcrProvider>(serviceProvider)
                 : executionMode.AllowMockProviders
                     ? ActivatorUtilities.CreateInstance<MockOcrProvider>(serviceProvider)
@@ -65,12 +82,15 @@ public static class InfrastructureServiceRegistration
         services.AddScoped<IEmbeddingProvider>(serviceProvider =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<ExternalProviderClientOptions>>().Value;
+            var embeddingOptions = serviceProvider.GetRequiredService<IOptions<EmbeddingOptions>>().Value;
             var executionMode = serviceProvider.GetRequiredService<IOptions<ProviderExecutionModeOptions>>().Value;
-            IEmbeddingProvider innerProvider = options.HasAzureOpenAiEmbeddingConfiguration()
+            IEmbeddingProvider innerProvider = options.HasOpenAiCompatibleEmbeddingConfiguration(embeddingOptions.Model)
+                ? ActivatorUtilities.CreateInstance<OpenAiCompatibleEmbeddingProvider>(serviceProvider)
+                : options.HasAzureOpenAiEmbeddingConfiguration()
                 ? ActivatorUtilities.CreateInstance<AzureOpenAiEmbeddingProvider>(serviceProvider)
                 : executionMode.AllowMockProviders
                     ? ActivatorUtilities.CreateInstance<MockEmbeddingProvider>(serviceProvider)
-                    : throw new InvalidOperationException("Azure OpenAI embeddings nao esta configurado e o uso de mock foi desabilitado.");
+                    : throw new InvalidOperationException("Nenhum provider de embeddings real esta configurado e o uso de mock foi desabilitado.");
 
             return ActivatorUtilities.CreateInstance<CachedEmbeddingProvider>(serviceProvider, innerProvider);
         });
@@ -78,7 +98,13 @@ public static class InfrastructureServiceRegistration
         {
             var options = serviceProvider.GetRequiredService<IOptions<BlobStorageOptions>>().Value;
             var executionMode = serviceProvider.GetRequiredService<IOptions<ProviderExecutionModeOptions>>().Value;
-            return HasConfiguredValue(options.ConnectionString)
+            return executionMode.PreferLocalPersistentInfrastructure
+                ? ActivatorUtilities.CreateInstance<FileSystemBlobStorageGateway>(serviceProvider)
+                : executionMode.PreferInMemoryInfrastructure
+                ? executionMode.AllowInMemoryInfrastructure
+                    ? ActivatorUtilities.CreateInstance<InMemoryBlobStorageGateway>(serviceProvider)
+                    : throw new InvalidOperationException("Modo local para Blob Storage foi solicitado, mas infraestrutura em memoria esta desabilitada.")
+                : HasConfiguredValue(options.ConnectionString)
                 ? ActivatorUtilities.CreateInstance<AzureBlobStorageGateway>(serviceProvider)
                 : executionMode.AllowInMemoryInfrastructure
                     ? ActivatorUtilities.CreateInstance<InMemoryBlobStorageGateway>(serviceProvider)
@@ -88,7 +114,13 @@ public static class InfrastructureServiceRegistration
         {
             var options = serviceProvider.GetRequiredService<IOptions<ExternalProviderClientOptions>>().Value;
             var executionMode = serviceProvider.GetRequiredService<IOptions<ProviderExecutionModeOptions>>().Value;
-            return options.HasAzureSearchConfiguration()
+            return executionMode.PreferLocalPersistentInfrastructure
+                ? ActivatorUtilities.CreateInstance<LocalPersistentSearchIndexGateway>(serviceProvider)
+                : executionMode.PreferInMemoryInfrastructure
+                ? executionMode.AllowInMemoryInfrastructure
+                    ? ActivatorUtilities.CreateInstance<InMemorySearchIndexGateway>(serviceProvider)
+                    : throw new InvalidOperationException("Modo local para Search foi solicitado, mas infraestrutura em memoria esta desabilitada.")
+                : options.HasAzureSearchConfiguration()
                 ? ActivatorUtilities.CreateInstance<AzureSearchIndexGateway>(serviceProvider)
                 : executionMode.AllowInMemoryInfrastructure
                     ? ActivatorUtilities.CreateInstance<InMemorySearchIndexGateway>(serviceProvider)
@@ -111,6 +143,13 @@ public static class InfrastructureServiceRegistration
     {
         var options = serviceProvider.GetRequiredService<IOptions<ExternalProviderClientOptions>>().Value;
         client.BaseAddress = new Uri(options.AzureOpenAiBaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
+    }
+
+    private static void ConfigureOpenAiCompatibleClient(IServiceProvider serviceProvider, HttpClient client)
+    {
+        var options = serviceProvider.GetRequiredService<IOptions<ExternalProviderClientOptions>>().Value;
+        client.BaseAddress = new Uri(NormalizeBaseUrl(options.OpenAiCompatibleBaseUrl));
         client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
     }
 
@@ -145,5 +184,17 @@ public static class InfrastructureServiceRegistration
     private static bool HasConfiguredValue(string? value)
     {
         return ExternalProviderClientOptions.HasConfiguredValue(value);
+    }
+
+    private static string NormalizeBaseUrl(string baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return baseUrl;
+        }
+
+        return baseUrl.EndsWith("/", StringComparison.Ordinal)
+            ? baseUrl
+            : baseUrl + "/";
     }
 }
