@@ -24,6 +24,15 @@ public static class ApplicationServiceRegistration
         services.AddScoped<IIngestionPipeline, IngestionService>();
         services.AddScoped<IDocumentMetadataSuggestionService, DocumentMetadataSuggestionService>();
         services.AddScoped<IIngestionJobProcessor, IngestionJobProcessor>();
+        services.AddScoped<IEmbeddingGenerationService, CurrentStateEmbeddingGenerationService>();
+        services.AddScoped<IRetriever, CurrentStateRetrieverAdapter>();
+        services.AddScoped<IReranker, CurrentStateRerankerAdapter>();
+        services.AddSingleton<IOperationalAuditStore, NoOpOperationalAuditStore>();
+        services.AddScoped<IPromptAssembler, CurrentStatePromptAssembler>();
+        services.AddScoped<IFileSearchTool, CurrentStateFileSearchTool>();
+        services.AddScoped<IWebSearchTool, DisabledWebSearchTool>();
+        services.AddScoped<ICodeInterpreter, DisabledCodeInterpreter>();
+        services.AddScoped<IAgentRuntime, GovernedAgentRuntime>();
 
         return services;
     }

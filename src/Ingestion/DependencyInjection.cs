@@ -15,6 +15,8 @@ public static class IngestionServiceRegistration
     public static IServiceCollection AddIngestion(this IServiceCollection services)
     {
         services.AddSingleton<IChunkingStrategy, SlidingWindowChunkingStrategy>();
+        services.AddSingleton<IDocumentParser, XlsxDocumentParser>();
+        services.AddSingleton<IDocumentParser, PptxDocumentParser>();
         services.AddSingleton<IDocumentParser, DirectDocumentParser>();
         services.AddScoped<IDocumentTextExtractor, DocumentTextExtractor>();
 

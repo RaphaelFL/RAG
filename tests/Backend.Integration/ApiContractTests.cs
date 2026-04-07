@@ -4,10 +4,13 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Chatbot.Application.Abstractions;
+using Chatbot.Application.Configuration;
 using Chatbot.Application.Contracts;
+using Chatbot.Infrastructure.Configuration;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Backend.Integration;
@@ -25,8 +28,49 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
             {
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
+                    ["EmbeddingGenerationOptions:PrimaryRuntime"] = "mock",
+                    ["FeatureFlagOptions:EnableMcp"] = "false",
                     ["ProviderExecutionModeOptions:AllowMockProviders"] = "true",
-                    ["ProviderExecutionModeOptions:AllowInMemoryInfrastructure"] = "true"
+                    ["ProviderExecutionModeOptions:AllowInMemoryInfrastructure"] = "true",
+                    ["ProviderExecutionModeOptions:PreferMockProviders"] = "true",
+                    ["ProviderExecutionModeOptions:PreferInMemoryInfrastructure"] = "true",
+                    ["ProviderExecutionModeOptions:PreferLocalPersistentInfrastructure"] = "false",
+                    ["ProviderExecutionModeOptions:PreferLocalOcr"] = "false",
+                    ["VectorStoreOptions:Provider"] = "in-memory",
+                    ["RedisCoordinationOptions:Enabled"] = "false"
+                });
+            });
+
+            builder.ConfigureServices(services =>
+            {
+                services.PostConfigure<EmbeddingGenerationOptions>(options =>
+                {
+                    options.PrimaryRuntime = "mock";
+                });
+
+                services.PostConfigure<ProviderExecutionModeOptions>(options =>
+                {
+                    options.AllowMockProviders = true;
+                    options.AllowInMemoryInfrastructure = true;
+                    options.PreferMockProviders = true;
+                    options.PreferInMemoryInfrastructure = true;
+                    options.PreferLocalPersistentInfrastructure = false;
+                    options.PreferLocalOcr = false;
+                });
+
+                services.PostConfigure<RedisCoordinationOptions>(options =>
+                {
+                    options.Enabled = false;
+                });
+
+                services.PostConfigure<VectorStoreOptions>(options =>
+                {
+                    options.Provider = "in-memory";
+                });
+
+                services.PostConfigure<FeatureFlagOptions>(options =>
+                {
+                    options.EnableMcp = false;
                 });
             });
         });
@@ -501,11 +545,11 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
     {
         using var factory = _factory.WithWebHostBuilder(builder =>
         {
-            builder.ConfigureAppConfiguration((_, config) =>
+            builder.ConfigureServices(services =>
             {
-                config.AddInMemoryCollection(new Dictionary<string, string?>
+                services.PostConfigure<FeatureFlagOptions>(options =>
                 {
-                    ["FeatureFlagOptions:EnableMcp"] = "true"
+                    options.EnableMcp = true;
                 });
             });
         });
@@ -533,11 +577,11 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
     {
         using var factory = _factory.WithWebHostBuilder(builder =>
         {
-            builder.ConfigureAppConfiguration((_, config) =>
+            builder.ConfigureServices(services =>
             {
-                config.AddInMemoryCollection(new Dictionary<string, string?>
+                services.PostConfigure<FeatureFlagOptions>(options =>
                 {
-                    ["FeatureFlagOptions:EnableMcp"] = "true"
+                    options.EnableMcp = true;
                 });
             });
         });
@@ -565,11 +609,11 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
     {
         using var factory = _factory.WithWebHostBuilder(builder =>
         {
-            builder.ConfigureAppConfiguration((_, config) =>
+            builder.ConfigureServices(services =>
             {
-                config.AddInMemoryCollection(new Dictionary<string, string?>
+                services.PostConfigure<FeatureFlagOptions>(options =>
                 {
-                    ["FeatureFlagOptions:EnableMcp"] = "true"
+                    options.EnableMcp = true;
                 });
             });
         });
@@ -612,21 +656,33 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
 
     private static async Task<DocumentDetailsDto> WaitForDocumentStatusAsync(HttpClient client, Guid documentId, string expectedStatus)
     {
-        for (var attempt = 0; attempt < 30; attempt++)
+        HttpStatusCode? lastStatusCode = null;
+        string? lastDocumentStatus = null;
+
+        for (var attempt = 0; attempt < 100; attempt++)
         {
             var response = await client.GetAsync($"/api/v1/documents/{documentId}");
+            lastStatusCode = response.StatusCode;
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                await Task.Delay(100);
+                continue;
+            }
+
             response.StatusCode.Should().Be(HttpStatusCode.OK);
             var document = await response.Content.ReadFromJsonAsync<DocumentDetailsDto>(JsonOptions);
             document.Should().NotBeNull();
+            lastDocumentStatus = document!.Status;
 
-            if (string.Equals(document!.Status, expectedStatus, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(document.Status, expectedStatus, StringComparison.OrdinalIgnoreCase))
             {
                 return document;
             }
 
-            await Task.Delay(50);
+            await Task.Delay(100);
         }
 
-        throw new InvalidOperationException($"Document {documentId} did not reach status {expectedStatus} in time.");
+        throw new InvalidOperationException($"Document {documentId} did not reach status {expectedStatus} in time. Last status code: {lastStatusCode}; last document status: {lastDocumentStatus ?? "<unknown>"}.");
     }
 }

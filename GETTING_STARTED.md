@@ -1,20 +1,42 @@
 # Como começar
 
-## Backend
+## 1. Pré-requisitos locais
+
+- .NET 8 SDK
+- Node.js 20+
+- Ollama com os modelos `qwen2.5-coder:7b`, `nomic-embed-text` e `llava`
+- SQL Server local ou `docker compose`
+- Redis local ou `docker compose`
+
+Baixe os modelos do Ollama antes do primeiro uso:
+
+```bash
+ollama pull qwen2.5-coder:7b
+ollama pull nomic-embed-text
+ollama pull llava
+```
+
+## 2. Backend local
 
 ```bash
 dotnet restore ChatbotApi.slnx
 .\scripts\run-api.ps1
 ```
 
-Saúde:
+Health checks:
 
 ```bash
 curl http://localhost:15214/health
 curl http://localhost:15214/api/v1/health
 ```
 
-## Frontend
+Swagger:
+
+```text
+https://localhost:15213/swagger/index.html
+```
+
+## 3. Frontend local
 
 ```bash
 cd web
@@ -22,7 +44,29 @@ npm install
 npm run dev
 ```
 
-## Headers locais obrigatórios
+UI:
+
+```text
+http://localhost:3000
+```
+
+## 4. Segredos locais
+
+O backend carrega automaticamente estas sobreposicoes opcionais:
+
+- `appsettings.local.json`
+- `appsettings.{Environment}.local.json`
+- `secrets.json`
+
+Use [secrets.json](secrets.json) apenas na sua maquina. Para deploy, prefira variaveis de ambiente:
+
+```text
+ConnectionStrings__DefaultConnection
+JWT__Key
+JWT__SecKey
+```
+
+## 5. Headers obrigatórios
 
 ```text
 Authorization: Bearer dev-token
@@ -31,7 +75,7 @@ X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 X-User-Role: TenantAdmin
 ```
 
-## Chat não streaming
+## 6. Exemplo mínimo de chat
 
 ```bash
 curl -X POST http://localhost:15214/api/v1/chat/message \
@@ -43,20 +87,7 @@ curl -X POST http://localhost:15214/api/v1/chat/message \
   -d "{\"sessionId\":\"550e8400-e29b-41d4-a716-446655440000\",\"message\":\"Quais sao as regras de reembolso?\",\"templateId\":\"grounded_answer\",\"templateVersion\":\"1.0.0\"}"
 ```
 
-## Chat streaming
-
-```bash
-curl -X POST http://localhost:15214/api/v1/chat/stream \
-  -H "Authorization: Bearer dev-token" \
-  -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" \
-  -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
-  -H "X-User-Role: TenantAdmin" \
-  -H "Content-Type: application/json" \
-  -N \
-  -d "{\"sessionId\":\"550e8400-e29b-41d4-a716-446655440000\",\"message\":\"Explique a politica de reembolso\",\"templateId\":\"grounded_answer\",\"templateVersion\":\"1.0.0\"}"
-```
-
-## Upload com policy documental
+## 7. Exemplo mínimo de upload
 
 ```bash
 curl -X POST http://localhost:15214/api/v1/documents/ingest \
@@ -66,11 +97,31 @@ curl -X POST http://localhost:15214/api/v1/documents/ingest \
   -H "X-User-Role: Analyst" \
   -F "file=@C:/temp/manual.txt" \
   -F "documentTitle=Manual Operacional" \
-  -F "categories=financeiro" \
-  -F "accessPolicy={\"allowedRoles\":[\"Analyst\"]}"
+  -F "categories=financeiro"
 ```
 
-## Testes
+Se quiser restringir acesso ao documento:
+
+```text
+accessPolicy={"allowedRoles":["Analyst"]}
+```
+
+## 8. Docker local
+
+```bash
+docker compose up --build
+```
+
+O compose sobe API, SQL Server e Redis Stack. Mantenha o Ollama rodando fora do container no host local.
+
+Portas do compose:
+
+- API: `http://localhost:5000`
+- SQL Server: `localhost:1433`
+- Redis: `localhost:6379`
+- Redis Stack UI: `http://localhost:8001`
+
+## 9. Testes
 
 ```bash
 dotnet test ChatbotApi.slnx
@@ -79,82 +130,29 @@ npm test
 npm run test:e2e
 ```
 
-## Docker
-
-```bash
-docker compose up --build
-```
-
-## Leituras seguintes
-
-- [README.md](README.md)
-- [START_HERE.md](START_HERE.md)
-- [docs](docs)
-{
-  "code": "error_code",
-  "message": "Human readable",
-  "details": {
-    "field": ["error message"]
-  },
-  "traceId": "00-abc123-def456-01"
-}
-```
-
 ## 10. Troubleshooting
 
 ### Porta em uso
 
-```bash
-# Encontrar processo usando a porta
-lsof -i :15214
-
-# Executar em porta diferente
-dotnet run --urls "http://localhost:5002"
+```powershell
+Get-NetTCPConnection -LocalPort 15214 -ErrorAction SilentlyContinue
 ```
 
-### Erro ao restaurar dependências
+### Certificado HTTPS local no Windows
 
 ```bash
-# Limpar cache NuGet
-dotnet nuget locals all --clear
-
-# Tentar novamente
-dotnet restore
-```
-
-### SSL/TLS
-
-```bash
-# Se certificado inválido em Windows
 dotnet dev-certs https --clean
 dotnet dev-certs https --trust
 ```
 
-## 11. Próximos Passos
+### Limpar cache NuGet
 
-1. ✅ Confirmar que a API executa
-2. ⬜ Integrar com Azure AI Search (doc: 04-proximas-etapas.md)
-3. ⬜ Integrar com Azure OpenAI
-4. ⬜ Adicionar autenticação
-5. ⬜ Implementar testes
+```bash
+dotnet nuget locals all --clear
+```
 
-## 12. Documentação Completa
+## 11. Leituras seguintes
 
-Consulte:
-- `docs/01-api-documentation.md` - Referência de endpoints
-- `docs/02-arquitetura-implementada.md` - Arquitetura técnica
-- `docs/03-seguranca-implementada.md` - Segurança
-- `docs/04-proximas-etapas.md` - Roadmap
-- `README.md` - Getting started
-
-## 13. Apoio
-
-Para debug:
-1. Verifique `logs/` para mensagens de erro
-2. Adicione breakpoints em `Program.cs` ou Controllers
-3. Use DevTools do navegador para inspecionar requests/responses
-4. Consulte comentários no código (próxima fase: melhorar documentação)
-
----
-
-**Sucesso!** 🎉 A API base está pronta para integração com Azure.
+- [README.md](README.md)
+- [START_HERE.md](START_HERE.md)
+- [docs](docs)

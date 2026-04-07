@@ -24,6 +24,7 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
         await sut.RetrieveAsync(new RetrievalQueryDto
@@ -77,6 +78,7 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
         var result = await sut.QueryAsync(new SearchQueryRequestDto
@@ -129,6 +131,7 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService { IsSemanticRankingEnabled = false },
             new StaticRagRuntimeSettings(),
+            new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
         var result = await sut.RetrieveAsync(new RetrievalQueryDto
@@ -178,6 +181,7 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
         await sut.RetrieveAsync(new RetrievalQueryDto
@@ -236,6 +240,7 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
         var result = await sut.RetrieveAsync(new RetrievalQueryDto
@@ -288,6 +293,7 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
         await sut.RetrieveAsync(new RetrievalQueryDto
@@ -339,6 +345,7 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
         var query = new RetrievalQueryDto

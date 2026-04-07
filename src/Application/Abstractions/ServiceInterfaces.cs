@@ -32,7 +32,7 @@ public interface IPromptInjectionDetector
 public interface IChatSessionStore
 {
     Task AppendTurnAsync(ChatSessionTurnRecord record, CancellationToken ct);
-    ChatSessionSnapshot? Get(Guid sessionId, Guid tenantId);
+    Task<ChatSessionSnapshot?> GetAsync(Guid sessionId, Guid tenantId, CancellationToken ct);
 }
 
 public interface IMalwareScanner
@@ -80,7 +80,7 @@ public interface IOcrProvider
 public interface IDocumentParser
 {
     bool CanParse(IngestDocumentCommand command);
-    Task<string?> ParseAsync(IngestDocumentCommand command, CancellationToken ct);
+    Task<DocumentParseResultDto?> ParseAsync(IngestDocumentCommand command, CancellationToken ct);
 }
 
 public interface IDocumentTextExtractor
@@ -198,6 +198,14 @@ public class DocumentTextExtractionResultDto
     public string Text { get; set; } = string.Empty;
     public string Strategy { get; set; } = string.Empty;
     public string? Provider { get; set; }
+    public string? StructuredJson { get; set; }
+    public List<PageExtractionDto> Pages { get; set; } = new();
+}
+
+public class DocumentParseResultDto
+{
+    public string Text { get; set; } = string.Empty;
+    public string? StructuredJson { get; set; }
     public List<PageExtractionDto> Pages { get; set; } = new();
 }
 
@@ -205,6 +213,12 @@ public class PageExtractionDto
 {
     public int PageNumber { get; set; }
     public string Text { get; set; } = string.Empty;
+    public string? WorksheetName { get; set; }
+    public int? SlideNumber { get; set; }
+    public string? SectionTitle { get; set; }
+    public string? TableId { get; set; }
+    public string? FormId { get; set; }
+    public Dictionary<string, string> Metadata { get; set; } = new();
     public List<TableDto>? Tables { get; set; }
 }
 

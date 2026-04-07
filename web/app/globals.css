@@ -127,6 +127,10 @@ button {
   align-items: start;
 }
 
+.panel-span-two {
+  grid-column: 1 / -1;
+}
+
 .panel {
   border: 1px solid var(--border);
   background: var(--surface);
@@ -293,6 +297,56 @@ textarea {
 .badge-accent {
   background: rgba(13, 148, 136, 0.16);
   color: var(--accent-strong);
+}
+
+.badge-danger {
+  background: rgba(180, 35, 24, 0.14);
+  color: var(--danger);
+}
+
+.audit-feed {
+  display: grid;
+  gap: 12px;
+}
+
+.audit-entry {
+  border: 1px solid rgba(61, 53, 42, 0.1);
+  border-radius: 18px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.audit-entry-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.audit-entry-title {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.audit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.audit-json {
+  margin: 10px 0 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(32, 26, 18, 0.06);
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .messages-panel {

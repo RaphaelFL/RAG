@@ -1,6 +1,20 @@
+export type DocumentStatus =
+  | 'Uploaded'
+  | 'Queued'
+  | 'Parsing'
+  | 'OcrProcessing'
+  | 'Chunking'
+  | 'Embedding'
+  | 'Indexing'
+  | 'Indexed'
+  | 'ReindexPending'
+  | 'Failed'
+  | 'Archived'
+  | 'Deleted';
+
 export type UploadDocumentResponse = {
   documentId: string;
-  status: string;
+  status: DocumentStatus;
   ingestionJobId: string;
   timestampUtc: string;
   createdAtUtc: string;
@@ -18,7 +32,7 @@ export type DocumentMetadataSuggestion = {
 export type DocumentDetails = {
   documentId: string;
   title: string;
-  status: string;
+  status: DocumentStatus;
   version: number;
   contentType: string;
   source?: string | null;
@@ -40,11 +54,12 @@ export type DocumentUploadModel = {
   fileName: string;
   documentId?: string;
   ingestionJobId?: string;
-  status: string;
+  status: DocumentStatus | 'sending';
   logicalTitle?: string;
   category?: string;
   tags?: string[];
   error?: string;
+  statusMessage?: string;
   details?: DocumentDetails;
 };
 

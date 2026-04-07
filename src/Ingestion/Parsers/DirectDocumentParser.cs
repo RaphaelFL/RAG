@@ -34,7 +34,7 @@ public sealed class DirectDocumentParser : IDocumentParser
             || string.IsNullOrWhiteSpace(extension);
     }
 
-    public async Task<string?> ParseAsync(IngestDocumentCommand command, CancellationToken ct)
+    public async Task<DocumentParseResultDto?> ParseAsync(IngestDocumentCommand command, CancellationToken ct)
     {
         if (!CanParse(command))
         {
@@ -62,7 +62,10 @@ public sealed class DirectDocumentParser : IDocumentParser
             var extractedPdfText = PdfTextExtraction.TryExtractText(bytes);
             if (!string.IsNullOrWhiteSpace(extractedPdfText))
             {
-                return extractedPdfText;
+                return new DocumentParseResultDto
+                {
+                    Text = extractedPdfText
+                };
             }
 
             return null;
@@ -73,7 +76,10 @@ public sealed class DirectDocumentParser : IDocumentParser
             var extractedDocxText = TryExtractDocxText(bytes);
             if (!string.IsNullOrWhiteSpace(extractedDocxText))
             {
-                return extractedDocxText;
+                return new DocumentParseResultDto
+                {
+                    Text = extractedDocxText
+                };
             }
 
             return null;
@@ -81,7 +87,13 @@ public sealed class DirectDocumentParser : IDocumentParser
 
         if (TextExtensions.Contains(extension) || IsTextContentType(command.ContentType) || IsTextLike(bytes))
         {
-            return DecodeText(bytes) ?? ExtractPrintableText(bytes);
+            var text = DecodeText(bytes) ?? ExtractPrintableText(bytes);
+            return string.IsNullOrWhiteSpace(text)
+                ? null
+                : new DocumentParseResultDto
+                {
+                    Text = text
+                };
         }
 
         return null;

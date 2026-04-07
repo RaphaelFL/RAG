@@ -10,7 +10,7 @@ O projeto já implementa o fluxo local de MVP pedido pelos arquivos .ia:
 - frontend em Next.js 15 + React 19 + TypeScript;
 - autenticação local por bearer/header para desenvolvimento;
 - chat não streaming e streaming SSE;
-- stack local sem dependência operacional de Azure para chat, embeddings, OCR local e persistência básica;
+- stack local sem dependência operacional de serviços pagos externos para chat, embeddings, OCR local e persistência básica;
 - upload, polling de status e reindexação;
 - prompt templates versionados;
 - prompt injection detection básica;
@@ -53,6 +53,7 @@ O que ainda é backlog estrutural:
 - Node.js 20+
 - npm 10+
 - Ollama
+- SQL Server local ou Docker Compose
 - modelos Ollama `qwen2.5-coder:7b`, `nomic-embed-text` e `llava`
 - ripgrep (`rg`) recomendado para busca completa no OpenClaude
 - Docker opcional
@@ -125,7 +126,16 @@ O `scripts/run-openclaude.ps1` usa Ollama por padrão com:
 docker compose up --build
 ```
 
-O compose atual sobe apenas a API em container Linux, publicada em http://localhost:5000.
+O compose local sobe API, SQL Server e Redis Stack. A API em container fica publicada em http://localhost:5000.
+
+Antes de usar o compose, mantenha o Ollama rodando no host local, porque o container da API aponta para `host.docker.internal:11434`.
+
+Servicos do compose:
+
+- API: `http://localhost:5000`
+- SQL Server: `localhost:1433`
+- Redis Stack: `localhost:6379`
+- Redis Insight UI do stack: `http://localhost:8001`
 
 ## Como parar
 
@@ -221,6 +231,28 @@ O backend agora usa esta convenção:
 - o backend não usa arquivo `.env`
 - credenciais e sobreposições locais opcionais devem ficar fora do versionamento
 
+### Segredos locais
+
+O startup carrega automaticamente arquivos locais opcionais e gitignored acima do `appsettings` base, incluindo [secrets.json](secrets.json). Esse é o local recomendado para chaves de desenvolvimento na maquina local.
+
+Campos sensíveis como os abaixo nao devem voltar para [src/Api/appsettings.json](src/Api/appsettings.json):
+
+- `ConnectionStrings:DefaultConnection`
+- `JWT:Key`
+- `JWT:SecKey`
+
+### Overrides por variáveis de ambiente
+
+Para staging, produção e containers, use variáveis de ambiente com a sintaxe do .NET:
+
+```text
+ConnectionStrings__DefaultConnection
+JWT__Key
+JWT__SecKey
+```
+
+O backend já aceita esses overrides sem mudanças adicionais de código.
+
 ### Frontend
 
 O frontend usa arquivo de ambiente próprio dentro de [web](web):
@@ -262,10 +294,10 @@ As principais seções estão em [src/Api/appsettings.json](src/Api/appsettings.
 - `SearchOptions:IndexName`: nome do índice. Exemplo: `chatbot-documents`
 - `SearchOptions:SemanticConfigurationName`: nome da configuração semântica. Exemplo: `default`
 - `BlobStorageOptions:ContainerName`: nome do container. Exemplo: `documents`
-- `OcrOptions:PrimaryProvider`, `FallbackProvider`, `AzureDocumentIntelligenceModelId`
+- `OcrOptions:PrimaryProvider`, `FallbackProvider`
 - `FeatureFlagOptions:*`
 - `ExternalProviderClientOptions:TimeoutSeconds`
-- `ExternalProviderClientOptions:*ApiVersion`
+- `ExternalProviderClientOptions:OpenAiCompatibleBaseUrl`
 
 No preset local atual, `ExternalProviderClientOptions:TimeoutSeconds` foi elevado para 180 segundos porque modelos locais no Ollama podem demorar mais para responder do que providers hospedados.
 
@@ -276,20 +308,17 @@ No preset local atual, `ExternalProviderClientOptions:TimeoutSeconds` foi elevad
 - segredos reais, chaves, tokens e credenciais nao devem aparecer nem no `README` nem em arquivos versionados
 - `.env`, `.env.local`, `.env.development.local`, `.env.production.local`, `web/.env.local`, `web/.env.development.local`, `web/.env.production.local`, `appsettings.*.local.json` e `secrets.json` tambem foram deixados sanitizados para a primeira subida
 - a API carrega automaticamente `appsettings.local.json`, `appsettings.{Environment}.local.json` e `secrets.json` opcionais no diretorio do projeto e nos diretorios-pai proximos, permitindo credenciais locais sem alterar `src/Api/appsettings.json`
-- em desenvolvimento local, `scripts/run-api.ps1` fixa as portas esperadas pela UI; quando `ExternalProviderClientOptions:UseAzureAdAuthentication=true` estiver ativo em `src/Api/appsettings.json`, a primeira chamada real pode exigir login por device code e usar o timeout operacional maior previsto para autenticacao interativa
+- em desenvolvimento local, `scripts/run-api.ps1` fixa as portas esperadas pela UI e usa o baseline local-only por padrao
 
 ### Falha explícita de startup
 
-A API agora falha no startup quando um provider real está parcialmente configurado ou quando a execução real é obrigatória e ainda faltam credenciais. Não existe mais fallback silencioso para chat mock, embeddings mock, OCR mock, blob em memória ou índice em memória fora de opt-in explícito para testes. Exemplos:
+A API continua falhando no startup quando a configuracao local essencial fica inconsistente, por exemplo:
 
-- Azure OpenAI com endpoint e key, mas sem deployment
-- Azure AI Search com endpoint, mas sem key
-- Document Intelligence com endpoint, mas sem key
-- Blob Storage com connection string sem configuração mínima complementar
+- sem string de conexao valida para banco
+- sem endpoint local do Ollama quando o runtime real estiver habilitado
+- com opcoes obrigatorias de embeddings, vetor ou OCR em formato invalido
 
-Isso evita subir a aplicação em um estado ambíguo.
-
-Os typed clients Refit continuam registrados com timeout explícito para Azure OpenAI, Azure Search, Blob Storage e Google Vision. O runtime principal já usa providers reais para Azure OpenAI, Azure AI Search, Azure Blob Storage e Azure Document Intelligence quando a configuração necessária está presente.
+Isso evita subir a aplicacao em estado ambiguo.
 
 ## Testes
 
@@ -336,7 +365,7 @@ Cobertura validada atualmente inclui:
 
 ## Frontend
 
-O frontend conversa apenas com a API HTTP. Não chama Azure diretamente. O token bearer digitado na UI não é persistido em storage do navegador. A UI já aplica bloqueio visual por papel para upload e reindexação.
+O frontend conversa apenas com a API HTTP. Não chama serviços externos diretamente. O token bearer digitado na UI não é persistido em storage do navegador. A UI já aplica bloqueio visual por papel para upload e reindexação.
 
 No ambiente local, o frontend consome o backend pelo proxy interno do Next em `/api/proxy` e espera a API em `http://localhost:15214`.
 

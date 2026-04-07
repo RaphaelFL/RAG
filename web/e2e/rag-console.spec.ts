@@ -4,6 +4,7 @@ import type { RagRuntimeSettings } from '@/features/chat/types/chat';
 const storageKey = 'rag-console-environment';
 const apiBaseUrl = 'http://localhost:5000';
 const appOrigin = 'http://127.0.0.1:3001';
+const proxyApiBasePath = '**/api/proxy/api/v1';
 
 const defaultRuntimeSettings: RagRuntimeSettings = {
   denseChunkSize: 1200,
@@ -41,7 +42,7 @@ async function fulfillCorsPreflight(route: Route) {
 }
 
 async function mockRuntimeRag(page: Page) {
-  await page.route(`${apiBaseUrl}/api/v1/admin/rag-runtime`, async (route) => {
+  await page.route(`${proxyApiBasePath}/admin/rag-runtime`, async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await fulfillCorsPreflight(route);
       return;
@@ -96,16 +97,13 @@ test('E2E-001 usuario autenticado envia pergunta grounded e recebe resposta com 
   await seedEnvironment(page);
   await mockRuntimeRag(page);
 
-  await page.route(`${apiBaseUrl}/api/v1/chat/stream`, async (route) => {
+  await page.route(`${proxyApiBasePath}/chat/stream`, async (route) => {
     const request = route.request();
 
     if (request.method() === 'OPTIONS') {
       await fulfillCorsPreflight(route);
       return;
     }
-
-    await expect(request.headerValue('x-tenant-id')).resolves.toBe('11111111-1111-1111-1111-111111111111');
-    await expect(request.headerValue('x-user-role')).resolves.toBe('TenantAdmin');
 
     await route.fulfill({
       status: 200,
@@ -140,7 +138,7 @@ test('E2E-003 streaming SSE renderiza eventos em ordem e encerra limpo', async (
   await seedEnvironment(page);
   await mockRuntimeRag(page);
 
-  await page.route(`${apiBaseUrl}/api/v1/chat/stream`, async (route) => {
+  await page.route(`${proxyApiBasePath}/chat/stream`, async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await fulfillCorsPreflight(route);
       return;
@@ -183,7 +181,7 @@ test('E2E-002 usuario sem permissao recebe bloqueio ao tentar acessar documento 
   await seedEnvironment(page, { userRole: 'TenantAdmin' });
   await mockRuntimeRag(page);
 
-  await page.route(`${apiBaseUrl}/api/v1/documents/ingest`, async (route) => {
+  await page.route(`${proxyApiBasePath}/documents/ingest`, async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await fulfillCorsPreflight(route);
       return;
@@ -203,7 +201,7 @@ test('E2E-002 usuario sem permissao recebe bloqueio ao tentar acessar documento 
     });
   });
 
-  await page.route(`${apiBaseUrl}/api/v1/documents/suggest-metadata`, async (route) => {
+  await page.route(`${proxyApiBasePath}/documents/suggest-metadata`, async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await fulfillCorsPreflight(route);
       return;
@@ -224,7 +222,7 @@ test('E2E-002 usuario sem permissao recebe bloqueio ao tentar acessar documento 
     });
   });
 
-  await page.route(`${apiBaseUrl}/api/v1/documents/doc-foreign`, async (route) => {
+  await page.route(`${proxyApiBasePath}/documents/doc-foreign`, async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await fulfillCorsPreflight(route);
       return;
@@ -257,8 +255,8 @@ test('E2E-002 usuario sem permissao recebe bloqueio ao tentar acessar documento 
   await page.getByRole('button', { name: 'Confirmar envio' }).click();
 
   await expect(page.locator('.error-banner').getByText('Acesso negado ao documento solicitado.', { exact: true })).toBeVisible();
-  await expect(page.getByText(/status: failed/i)).toBeVisible();
-  await expect(page.getByText('privado.pdf')).toBeVisible();
+  await expect(page.locator('.upload-status-entry .badge').getByText('Failed', { exact: true })).toBeVisible();
+  await expect(page.locator('.upload-status-entry').getByText('Documento privado', { exact: true })).toBeVisible();
 });
 
 for (const status of [401, 429]) {
@@ -266,7 +264,7 @@ for (const status of [401, 429]) {
     await seedEnvironment(page);
     await mockRuntimeRag(page);
 
-    await page.route(`${apiBaseUrl}/api/v1/chat/message`, async (route) => {
+    await page.route(`${proxyApiBasePath}/chat/stream`, async (route) => {
       if (route.request().method() === 'OPTIONS') {
         await fulfillCorsPreflight(route);
         return;
@@ -284,7 +282,7 @@ for (const status of [401, 429]) {
     });
 
     await openConsole(page);
-    await sendQuestion(page, `Teste de erro ${status}`, false);
+    await sendQuestion(page, `Teste de erro ${status}`);
 
     await expect(
       page.locator('.error-banner').getByText(

@@ -204,8 +204,6 @@ builder.Services.AddOptions<OcrOptions>()
     .Bind(builder.Configuration.GetRequiredSection("OcrOptions"))
     .Validate(options => !string.IsNullOrWhiteSpace(options.PrimaryProvider), "OcrOptions:PrimaryProvider e obrigatorio.")
     .Validate(options => !options.EnableFallback || !string.IsNullOrWhiteSpace(options.FallbackProvider), "OcrOptions:FallbackProvider e obrigatorio quando EnableFallback=true.")
-    .Validate(options => !string.Equals(options.PrimaryProvider, "AzureDocumentIntelligence", StringComparison.OrdinalIgnoreCase)
-        || !string.IsNullOrWhiteSpace(options.AzureDocumentIntelligenceModelId), "OcrOptions:AzureDocumentIntelligenceModelId e obrigatorio quando PrimaryProvider=AzureDocumentIntelligence.")
     .Validate(options => options.MinimumDirectTextCharacters >= 0, "OcrOptions:MinimumDirectTextCharacters nao pode ser negativo.")
     .Validate(options => options.MinimumDirectTextCoverageRatio is >= 0 and <= 1, "OcrOptions:MinimumDirectTextCoverageRatio deve estar entre 0 e 1.")
     .ValidateOnStart();
@@ -251,9 +249,40 @@ builder.Services.AddOptions<RedisSettings>()
 builder.Services.AddOptions<ExternalProviderClientOptions>()
     .Bind(builder.Configuration.GetRequiredSection("ExternalProviderClientOptions"))
     .Validate(options => options.TimeoutSeconds > 0, "ExternalProviderClientOptions:TimeoutSeconds deve ser maior que zero.")
-    .Validate(options => !ExternalProviderClientOptions.HasConfiguredValue(options.AzureOpenAiBaseUrl) || !string.IsNullOrWhiteSpace(options.AzureOpenAiApiVersion), "ExternalProviderClientOptions:AzureOpenAiApiVersion e obrigatorio quando Azure OpenAI estiver configurado.")
-    .Validate(options => !ExternalProviderClientOptions.HasConfiguredValue(options.AzureSearchBaseUrl) || !string.IsNullOrWhiteSpace(options.AzureSearchApiVersion), "ExternalProviderClientOptions:AzureSearchApiVersion e obrigatorio quando Azure Search estiver configurado.")
-    .Validate(options => !ExternalProviderClientOptions.HasConfiguredValue(options.AzureDocumentIntelligenceBaseUrl) || !string.IsNullOrWhiteSpace(options.AzureDocumentIntelligenceApiVersion), "ExternalProviderClientOptions:AzureDocumentIntelligenceApiVersion e obrigatorio quando Azure Document Intelligence estiver configurado.")
+    .ValidateOnStart();
+builder.Services.AddOptions<Chatbot.Application.Configuration.EmbeddingGenerationOptions>()
+    .Bind(builder.Configuration.GetSection("EmbeddingGenerationOptions"))
+    .Validate(options => !string.IsNullOrWhiteSpace(options.ModelName), "EmbeddingGenerationOptions:ModelName e obrigatorio.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.ModelVersion), "EmbeddingGenerationOptions:ModelVersion e obrigatorio.")
+    .Validate(options => options.BatchSize > 0, "EmbeddingGenerationOptions:BatchSize deve ser maior que zero.")
+    .Validate(options => options.Dimensions > 0, "EmbeddingGenerationOptions:Dimensions deve ser maior que zero.")
+    .ValidateOnStart();
+builder.Services.AddOptions<Chatbot.Application.Configuration.VectorStoreOptions>()
+    .Bind(builder.Configuration.GetSection("VectorStoreOptions"))
+    .Validate(options => !string.IsNullOrWhiteSpace(options.Provider), "VectorStoreOptions:Provider e obrigatorio.")
+    .Validate(options => options.DefaultTopK > 0, "VectorStoreOptions:DefaultTopK deve ser maior que zero.")
+    .ValidateOnStart();
+builder.Services.AddOptions<Chatbot.Application.Configuration.RedisCoordinationOptions>()
+    .Bind(builder.Configuration.GetSection("RedisCoordinationOptions"))
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.KeyPrefix), "RedisCoordinationOptions:KeyPrefix e obrigatorio quando habilitado.")
+    .ValidateOnStart();
+builder.Services.AddOptions<Chatbot.Application.Configuration.AgentRuntimeOptions>()
+    .Bind(builder.Configuration.GetSection("AgentRuntimeOptions"))
+    .Validate(options => options.MaxToolBudget > 0, "AgentRuntimeOptions:MaxToolBudget deve ser maior que zero.")
+    .Validate(options => options.MaxDepth > 0, "AgentRuntimeOptions:MaxDepth deve ser maior que zero.")
+    .ValidateOnStart();
+builder.Services.AddOptions<Chatbot.Application.Configuration.CodeInterpreterOptions>()
+    .Bind(builder.Configuration.GetSection("CodeInterpreterOptions"))
+    .Validate(options => options.TimeoutSeconds > 0, "CodeInterpreterOptions:TimeoutSeconds deve ser maior que zero.")
+    .Validate(options => options.MemoryLimitMb > 0, "CodeInterpreterOptions:MemoryLimitMb deve ser maior que zero.")
+    .ValidateOnStart();
+builder.Services.AddOptions<Chatbot.Application.Configuration.WebSearchOptions>()
+    .Bind(builder.Configuration.GetSection("WebSearchOptions"))
+    .Validate(options => options.DefaultTopK > 0, "WebSearchOptions:DefaultTopK deve ser maior que zero.")
+    .Validate(options => options.TimeoutSeconds > 0, "WebSearchOptions:TimeoutSeconds deve ser maior que zero.")
+    .ValidateOnStart();
+builder.Services.AddOptions<Chatbot.Application.Configuration.StructuredExtractionOptions>()
+    .Bind(builder.Configuration.GetSection("StructuredExtractionOptions"))
     .ValidateOnStart();
 
 builder.Services
@@ -467,9 +496,10 @@ app.MapGet("/api/v1/health", () => Results.Ok(new
     status = "Healthy",
     dependencies = new
     {
-        search = "Healthy",
-        blobStorage = "Healthy",
-        chatModel = "Healthy"
+        vectorStore = "Healthy",
+        documentStorage = "Healthy",
+        aiRuntime = "Healthy",
+        ocr = "Healthy"
     },
     timestampUtc = DateTime.UtcNow
 }))

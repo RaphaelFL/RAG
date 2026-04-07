@@ -341,9 +341,9 @@ public class ChatOrchestratorServiceTests
             return Task.CompletedTask;
         }
 
-        public ChatSessionSnapshot? Get(Guid sessionId, Guid tenantId)
+        public Task<ChatSessionSnapshot?> GetAsync(Guid sessionId, Guid tenantId, CancellationToken ct)
         {
-            return null;
+            return Task.FromResult<ChatSessionSnapshot?>(null);
         }
     }
 

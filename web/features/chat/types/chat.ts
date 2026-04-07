@@ -119,3 +119,30 @@ export type RagRuntimeSettings = {
   chatCompletionCacheTtlSeconds: number;
   embeddingCacheTtlHours: number;
 };
+
+export type OperationalAuditCategory = 'retrieval' | 'prompt-assembly' | 'agent-run' | 'tool-execution';
+
+export type OperationalAuditEntry = {
+  entryId: string;
+  category: OperationalAuditCategory;
+  status?: string | null;
+  title: string;
+  summary: string;
+  detailsJson?: string | null;
+  createdAtUtc: string;
+  completedAtUtc?: string | null;
+};
+
+export type OperationalAuditFeed = {
+  entries: OperationalAuditEntry[];
+  nextCursor?: string | null;
+};
+
+export type OperationalAuditQuery = {
+  category?: string;
+  status?: string;
+  fromUtc?: string;
+  toUtc?: string;
+  cursor?: string;
+  limit: number;
+};

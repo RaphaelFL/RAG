@@ -167,7 +167,11 @@ public class ChatController : ControllerBase
             TraceId = HttpContext.TraceIdentifier
         }, StreamingJsonOptions);
 
-        Response.StatusCode = (int)HttpStatusCode.GatewayTimeout;
+        if (!Response.HasStarted)
+        {
+            Response.StatusCode = (int)HttpStatusCode.GatewayTimeout;
+        }
+
         await Response.WriteAsync($"event: error\r\n");
         await Response.WriteAsync($"data: {errorEvent}\r\n\r\n");
         await Response.Body.FlushAsync(cancellationToken);
@@ -177,7 +181,7 @@ public class ChatController : ControllerBase
     [ProducesResponseType(typeof(ChatSessionSnapshot), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status404NotFound)]
-    public ActionResult<ChatSessionSnapshot> GetSession([FromRoute] Guid sessionId)
+    public async Task<ActionResult<ChatSessionSnapshot>> GetSession([FromRoute] Guid sessionId, CancellationToken cancellationToken)
     {
         var tenantIdRaw = User.FindFirst("tenant_id")?.Value;
         if (!Guid.TryParse(tenantIdRaw, out var tenantId))
@@ -190,7 +194,7 @@ public class ChatController : ControllerBase
             });
         }
 
-        var session = _chatSessionStore.Get(sessionId, tenantId);
+        var session = await _chatSessionStore.GetAsync(sessionId, tenantId, cancellationToken);
         if (session is null)
         {
             return NotFound(new ErrorResponseDto

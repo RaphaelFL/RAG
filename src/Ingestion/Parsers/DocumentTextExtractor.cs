@@ -24,6 +24,7 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
 
     public async Task<DocumentTextExtractionResultDto> ExtractAsync(IngestDocumentCommand command, CancellationToken ct)
     {
+        DocumentParseResultDto? parseResult = null;
         string? parsedText = null;
 
         foreach (var parser in _parsers)
@@ -33,7 +34,8 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
                 continue;
             }
 
-            parsedText = await parser.ParseAsync(command, ct);
+            parseResult = await parser.ParseAsync(command, ct);
+            parsedText = parseResult?.Text;
             if (ShouldUseDirectText(command, parsedText))
             {
                 if (ShouldRecordOcrAvoided(command))
@@ -41,7 +43,7 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
                     ChatbotTelemetry.OcrAvoided.Add(1, new KeyValuePair<string, object?>("content.type", command.ContentType));
                 }
 
-                var directExtraction = BuildExtraction(parsedText!, "direct", null, null);
+                var directExtraction = BuildExtraction(parsedText!, "direct", null, parseResult?.Pages, parseResult?.StructuredJson);
 
                 return directExtraction;
             }
@@ -49,18 +51,24 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
 
         if (!ShouldAttemptOcr(command, parsedText))
         {
-            return BuildExtraction(parsedText ?? string.Empty, string.IsNullOrWhiteSpace(parsedText) ? "unavailable" : "direct", null, null);
+            return BuildExtraction(
+                parsedText ?? string.Empty,
+                string.IsNullOrWhiteSpace(parsedText) ? "unavailable" : "direct",
+                null,
+                parseResult?.Pages,
+                parseResult?.StructuredJson);
         }
 
         var ocrResult = await _ocrProvider.ExtractAsync(command.Content, command.FileName, ct);
-        return BuildExtraction(ocrResult.ExtractedText, "ocr", ocrResult.Provider ?? _ocrProvider.ProviderName, ocrResult.Pages);
+        return BuildExtraction(ocrResult.ExtractedText, "ocr", ocrResult.Provider ?? _ocrProvider.ProviderName, ocrResult.Pages, null);
     }
 
     private static DocumentTextExtractionResultDto BuildExtraction(
         string text,
         string strategy,
         string? provider,
-        IReadOnlyCollection<PageExtractionDto>? rawPages)
+        IReadOnlyCollection<PageExtractionDto>? rawPages,
+        string? structuredJson)
     {
         var pages = NormalizePages(text, rawPages);
         var repeatedEdgeLines = FindRepeatedEdgeLines(pages);
@@ -69,6 +77,12 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
             {
                 PageNumber = page.PageNumber,
                 Text = CleanPageText(page.Text, repeatedEdgeLines),
+                WorksheetName = page.WorksheetName,
+                SlideNumber = page.SlideNumber,
+                SectionTitle = page.SectionTitle,
+                TableId = page.TableId,
+                FormId = page.FormId,
+                Metadata = new Dictionary<string, string>(page.Metadata, StringComparer.OrdinalIgnoreCase),
                 Tables = page.Tables
             })
             .Where(page => !string.IsNullOrWhiteSpace(page.Text))
@@ -89,6 +103,7 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
             Text = string.Join("\n\n", cleanedPages.Select(page => page.Text).Where(pageText => !string.IsNullOrWhiteSpace(pageText))).Trim(),
             Strategy = strategy,
             Provider = provider,
+            StructuredJson = structuredJson,
             Pages = cleanedPages
         };
     }
@@ -102,6 +117,12 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
                 {
                     PageNumber = page.PageNumber > 0 ? page.PageNumber : index + 1,
                     Text = NormalizeLineEndings(page.Text),
+                    WorksheetName = page.WorksheetName,
+                    SlideNumber = page.SlideNumber,
+                    SectionTitle = page.SectionTitle,
+                    TableId = page.TableId,
+                    FormId = page.FormId,
+                    Metadata = new Dictionary<string, string>(page.Metadata, StringComparer.OrdinalIgnoreCase),
                     Tables = page.Tables
                 })
                 .ToList();

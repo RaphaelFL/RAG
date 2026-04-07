@@ -4,14 +4,16 @@ import * as React from 'react';
 import clsx from 'clsx';
 import { useRuntimeEnvironment } from '@/features/chat/state/useRuntimeEnvironment';
 import { saveRuntimeEnvironment } from '@/features/chat/api/runtimeEnvironmentApi';
-import { getRagRuntimeSettings, updateRagRuntimeSettings } from '@/features/chat/api/runtimeAdminApi';
-import type { RagRuntimeSettings } from '@/features/chat/types/chat';
+import { getOperationalAuditFeed, getRagRuntimeSettings, updateRagRuntimeSettings } from '@/features/chat/api/runtimeAdminApi';
+import type { OperationalAuditCategory, OperationalAuditEntry, RagRuntimeSettings } from '@/features/chat/types/chat';
 import type { AuthMode, RuntimeEnvironment, UserRole } from '@/types/app';
 
 const USER_ROLES: UserRole[] = ['TenantUser', 'Analyst', 'TenantAdmin', 'PlatformAdmin', 'McpClient'];
 const AUTH_MODES: AuthMode[] = ['jwt', 'development-headers'];
+const AUDIT_CATEGORIES: OperationalAuditCategory[] = ['retrieval', 'prompt-assembly', 'agent-run', 'tool-execution'];
+const AUDIT_STATUSES = ['completed', 'failed', 'timeout', 'rejected', 'disabled'];
 
-export function AdminSettingsConsole() {
+export default function AdminSettingsConsole() {
   const { environment, isReady, setEnvironment } = useRuntimeEnvironment();
   const [draftEnvironment, setDraftEnvironment] = React.useState(environment);
   const [accessError, setAccessError] = React.useState<string | null>(null);
@@ -21,6 +23,18 @@ export function AdminSettingsConsole() {
   const [runtimeError, setRuntimeError] = React.useState<string | null>(null);
   const [isRuntimeLoading, setIsRuntimeLoading] = React.useState(false);
   const [isRuntimeSaving, setIsRuntimeSaving] = React.useState(false);
+  const [auditEntries, setAuditEntries] = React.useState<OperationalAuditEntry[]>([]);
+  const [auditCursor, setAuditCursor] = React.useState<string | null>(null);
+  const [auditError, setAuditError] = React.useState<string | null>(null);
+  const [isAuditLoading, setIsAuditLoading] = React.useState(false);
+  const [isAuditLoadingMore, setIsAuditLoadingMore] = React.useState(false);
+  const [auditFilters, setAuditFilters] = React.useState({
+    category: '',
+    status: '',
+    fromUtc: '',
+    toUtc: '',
+    limit: '20'
+  });
 
   React.useEffect(() => {
     setDraftEnvironment(environment);
@@ -60,6 +74,14 @@ export function AdminSettingsConsole() {
     };
   }, [environment, isReady]);
 
+  React.useEffect(() => {
+    if (!isReady || !canAdministerRuntime(environment.userRole)) {
+      return;
+    }
+
+    void handleLoadAudit(true);
+  }, [environment, isReady]);
+
   function updateEnvironmentField<K extends keyof RuntimeEnvironment>(key: K, value: RuntimeEnvironment[K]) {
     setDraftEnvironment((current) => ({ ...current, [key]: value }));
     setAccessStatus('idle');
@@ -67,6 +89,10 @@ export function AdminSettingsConsole() {
 
   function updateRuntimeField<K extends keyof RagRuntimeSettings>(key: K, value: RagRuntimeSettings[K]) {
     setRuntimeDraft((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  function updateAuditFilter<K extends keyof typeof auditFilters>(key: K, value: (typeof auditFilters)[K]) {
+    setAuditFilters((current) => ({ ...current, [key]: value }));
   }
 
   async function handleSaveEnvironment() {
@@ -99,6 +125,30 @@ export function AdminSettingsConsole() {
       setRuntimeError(readableClientError(error));
     } finally {
       setIsRuntimeSaving(false);
+    }
+  }
+
+  async function handleLoadAudit(reset: boolean) {
+    const loadingSetter = reset ? setIsAuditLoading : setIsAuditLoadingMore;
+    loadingSetter(true);
+    setAuditError(null);
+
+    try {
+      const result = await getOperationalAuditFeed(environment, {
+        category: auditFilters.category || undefined,
+        status: auditFilters.status || undefined,
+        fromUtc: normalizeDateFilter(auditFilters.fromUtc),
+        toUtc: normalizeDateFilter(auditFilters.toUtc),
+        cursor: reset ? undefined : auditCursor || undefined,
+        limit: Math.max(1, Math.min(100, Number(auditFilters.limit) || 20))
+      });
+
+      setAuditEntries((current) => (reset ? result.entries : current.concat(result.entries)));
+      setAuditCursor(result.nextCursor ?? null);
+    } catch (error) {
+      setAuditError(readableClientError(error));
+    } finally {
+      loadingSetter(false);
     }
   }
 
@@ -204,6 +254,19 @@ export function AdminSettingsConsole() {
           draftSettings={runtimeDraft}
           onNumberChange={(key, value) => updateRuntimeField(key, value)}
           onSave={handleSaveRuntimeSettings}
+        />
+
+        <OperationalAuditPanel
+          canAdminister={canAdministerRuntime(environment.userRole)}
+          entries={auditEntries}
+          error={auditError}
+          filters={auditFilters}
+          hasNextPage={Boolean(auditCursor)}
+          isLoading={isAuditLoading}
+          isLoadingMore={isAuditLoadingMore}
+          onFilterChange={updateAuditFilter}
+          onRefresh={() => void handleLoadAudit(true)}
+          onLoadMore={() => void handleLoadAudit(false)}
         />
       </section>
     </main>
@@ -312,6 +375,160 @@ function DecimalField({ label, value, onChange }: Readonly<{ label: string; valu
 
 function canAdministerRuntime(userRole: UserRole) {
   return userRole === 'Analyst' || userRole === 'TenantAdmin' || userRole === 'PlatformAdmin';
+}
+
+function OperationalAuditPanel({
+  canAdminister,
+  entries,
+  error,
+  filters,
+  hasNextPage,
+  isLoading,
+  isLoadingMore,
+  onFilterChange,
+  onRefresh,
+  onLoadMore
+}: Readonly<{
+  canAdminister: boolean;
+  entries: OperationalAuditEntry[];
+  error: string | null;
+  filters: { category: string; status: string; fromUtc: string; toUtc: string; limit: string };
+  hasNextPage: boolean;
+  isLoading: boolean;
+  isLoadingMore: boolean;
+  onFilterChange: <K extends 'category' | 'status' | 'fromUtc' | 'toUtc' | 'limit'>(key: K, value: string) => void;
+  onRefresh: () => void;
+  onLoadMore: () => void;
+}>) {
+  if (!canAdminister) {
+    return null;
+  }
+
+  return (
+    <div className="panel panel-span-two">
+      <div className="panel-header">
+        <div>
+          <h2>Auditoria operacional</h2>
+          <p>Consulta retrieval, prompt assembly, agent runs e tool executions com filtros e cursor.</p>
+        </div>
+        <span className={clsx('badge', isLoading ? 'badge-warning' : 'badge-accent')}>
+          {isLoading ? 'Atualizando' : 'Feed'}
+        </span>
+      </div>
+
+      {error ? <div className="error-banner">{error}</div> : null}
+
+      <div className="field-grid two-columns">
+        <label>
+          <span>Categoria</span>
+          <select value={filters.category} onChange={(event) => onFilterChange('category', event.target.value)}>
+            <option value="">Todas</option>
+            {AUDIT_CATEGORIES.map((category) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Status</span>
+          <select value={filters.status} onChange={(event) => onFilterChange('status', event.target.value)}>
+            <option value="">Todos</option>
+            {AUDIT_STATUSES.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>De</span>
+          <input type="datetime-local" value={filters.fromUtc} onChange={(event) => onFilterChange('fromUtc', event.target.value)} />
+        </label>
+        <label>
+          <span>Ate</span>
+          <input type="datetime-local" value={filters.toUtc} onChange={(event) => onFilterChange('toUtc', event.target.value)} />
+        </label>
+        <label>
+          <span>Limite</span>
+          <input type="number" min={1} max={100} value={filters.limit} onChange={(event) => onFilterChange('limit', event.target.value)} />
+        </label>
+      </div>
+
+      <div className="button-row compact">
+        <button className="button secondary" disabled={isLoading} onClick={onRefresh} type="button">
+          {isLoading ? 'Buscando...' : 'Aplicar filtros'}
+        </button>
+      </div>
+
+      {entries.length === 0 && !isLoading ? <p className="muted-copy">Nenhum evento encontrado para os filtros atuais.</p> : null}
+
+      <div className="audit-feed">
+        {entries.map((entry) => (
+          <article key={`${entry.category}-${entry.entryId}`} className="audit-entry">
+            <div className="audit-entry-header">
+              <div>
+                <strong className="audit-entry-title">{entry.title}</strong>
+                <p className="muted-copy">{entry.summary}</p>
+              </div>
+              <div className="status-row">
+                <span className="badge badge-accent">{entry.category}</span>
+                {entry.status ? <span className={clsx('badge', badgeClassForStatus(entry.status))}>{entry.status}</span> : null}
+              </div>
+            </div>
+            <div className="audit-meta">
+              <span>Criado: {formatTimestamp(entry.createdAtUtc)}</span>
+              {entry.completedAtUtc ? <span>Concluido: {formatTimestamp(entry.completedAtUtc)}</span> : null}
+            </div>
+            {entry.detailsJson ? (
+              <details>
+                <summary>Detalhes</summary>
+                <pre className="audit-json">{prettyPrintJson(entry.detailsJson)}</pre>
+              </details>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      {hasNextPage ? (
+        <div className="button-row compact">
+          <button className="button ghost" disabled={isLoadingMore} onClick={onLoadMore} type="button">
+            {isLoadingMore ? 'Carregando...' : 'Carregar mais'}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function normalizeDateFilter(value: string) {
+  if (!value.trim()) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+function prettyPrintJson(value: string) {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function badgeClassForStatus(status: string) {
+  if (status === 'completed') {
+    return 'badge-success';
+  }
+
+  if (status === 'failed' || status === 'rejected') {
+    return 'badge-danger';
+  }
+
+  return 'badge-warning';
+}
+
+function formatTimestamp(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('pt-BR');
 }
 
 function readableClientError(error: unknown) {

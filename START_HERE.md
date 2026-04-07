@@ -1,10 +1,8 @@
 # Comece por aqui
 
-Se você quer subir o projeto sem perder tempo, siga esta ordem.
+Se quiser apenas subir tudo local e testar a API, use esta ordem.
 
-## 1. Backend local sem Azure para prompts
-
-Antes de subir a API, instale o Ollama e baixe os modelos locais:
+## 1. Prepare o Ollama
 
 ```bash
 ollama pull qwen2.5-coder:7b
@@ -12,27 +10,28 @@ ollama pull nomic-embed-text
 ollama pull llava
 ```
 
-O appsettings local agora prioriza Ollama para chat e embeddings, usa OCR local por modelo vision e persiste blobs, catálogo e índice em disco dentro de artifacts/local-rag para nao depender da Azure no fluxo de prompts.
+O baseline atual usa somente providers locais para chat, embeddings e OCR por vision model.
 
-## 2. Backend
-
-Na raiz do repositório:
+## 2. Suba a API
 
 ```bash
 dotnet restore ChatbotApi.slnx
 .\scripts\run-api.ps1
 ```
 
-Teste a saúde:
+Valide:
 
 ```bash
 curl http://localhost:15214/health
-curl http://localhost:15214/api/v1/health
 ```
 
-## 3. Frontend
+Swagger:
 
-Em outro terminal:
+```text
+https://localhost:15213/swagger/index.html
+```
+
+## 3. Suba o frontend
 
 ```bash
 cd web
@@ -40,94 +39,41 @@ npm install
 npm run dev
 ```
 
-Abra http://localhost:3000.
+Abra:
 
-## 3.1 Agentes externos locais
-
-Para abrir OpenClaude junto do backend em janelas separadas:
-
-```bash
-.\scripts\run-agent-stack.ps1
+```text
+http://localhost:3000
 ```
 
-Detalhes de setup e validacao em [EXTERNAL_AGENTS.md](EXTERNAL_AGENTS.md).
+## 4. Se preferir Docker
 
-## 4. Headers obrigatórios para usar a API local
+```bash
+docker compose up --build
+```
 
-Use sempre:
+Esse caminho sobe API, SQL Server e Redis Stack. O Ollama continua no host local.
+
+## 5. Headers mínimos
 
 - Authorization: Bearer dev-token
 - X-Tenant-Id: guid
 - X-User-Id: guid
 - X-User-Role: TenantUser, Analyst, TenantAdmin, PlatformAdmin ou McpClient
 
-## 5. Exemplo mínimo de chat
+## 6. O que já está pronto
 
-```bash
-curl -X POST http://localhost:15214/api/v1/chat/message \
-   -H "Authorization: Bearer dev-token" \
-   -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" \
-   -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
-   -H "X-User-Role: TenantAdmin" \
-   -H "Content-Type: application/json" \
-   -d "{\"sessionId\":\"550e8400-e29b-41d4-a716-446655440000\",\"message\":\"Quais sao as regras de reembolso?\",\"templateId\":\"grounded_answer\",\"templateVersion\":\"1.0.0\"}"
-```
-
-## 6. Exemplo mínimo de upload
-
-```bash
-curl -X POST http://localhost:15214/api/v1/documents/ingest \
-   -H "Authorization: Bearer dev-token" \
-   -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" \
-   -H "X-User-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
-   -H "X-User-Role: Analyst" \
-   -F "file=@C:/temp/manual.txt" \
-   -F "documentTitle=Manual Operacional" \
-   -F "categories=financeiro"
-```
-
-Se quiser restringir o documento por papel/usuário:
-
-```text
-accessPolicy={"allowedRoles":["Analyst"],"allowedUserIds":["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]}
-```
-
-## 7. Rodar testes
-
-Backend:
-
-```bash
-dotnet test ChatbotApi.slnx
-```
-
-Frontend:
-
-```bash
-cd web
-npm test
-npm run test:e2e
-```
-
-## 8. Onde olhar depois
-
-- [README.md](README.md): visão completa, configuração, backlog e comandos
-- [GETTING_STARTED.md](GETTING_STARTED.md): exemplos rápidos de uso
-- [docs](docs): documentação por área
-
-## 9. O que já está implementado
-
-- chat grounded com SSE e citations
+- chat grounded com resposta normal e SSE
 - histórico de sessão
-- upload, polling e reindexação
+- upload, ingestão e reindexação
 - accessPolicy documental
-- MCP com auth e feature flag
-- frontend com sanitização, papel e E2E
+- OCR local para imagens com Ollama vision
+- embeddings internos com runtime Python local
+- vector store local via Redis Stack
+- frontend administrativo e feed de auditoria operacional
 
-## 10. O que ainda nao usa provider local real
+## 7. O que olhar depois
 
-- Azure AI Search
-- Azure Blob Storage
-- Azure Document Intelligence
-- camada agentic do baseline
-
-Observacao: no modo local atual, imagens usam OCR via modelo vision do Ollama. PDF com texto embutido entra por extração direta. PDF escaneado sem texto embutido ainda nao tem renderização local de páginas para OCR completo.
+- [README.md](README.md)
+- [GETTING_STARTED.md](GETTING_STARTED.md)
+- [EXTERNAL_AGENTS.md](EXTERNAL_AGENTS.md)
+- [docs](docs)

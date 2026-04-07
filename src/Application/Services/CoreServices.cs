@@ -7,7 +7,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using Chatbot.Domain.Entities;
 
 namespace Chatbot.Application.Services;
 
@@ -528,6 +530,8 @@ file static class ChatEvidenceExtensions
 /// </summary>
 public class RetrievalService : IRetrievalService
 {
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+
     private readonly ISearchIndexGateway _indexGateway;
     private readonly IEmbeddingProvider _embeddingProvider;
     private readonly IDocumentCatalog _documentCatalog;
@@ -536,6 +540,7 @@ public class RetrievalService : IRetrievalService
     private readonly IApplicationCache _applicationCache;
     private readonly IFeatureFlagService _featureFlagService;
     private readonly IRagRuntimeSettings _ragRuntimeSettings;
+    private readonly IOperationalAuditStore _operationalAuditStore;
     private readonly ILogger<RetrievalService> _logger;
 
     public RetrievalService(
@@ -547,6 +552,7 @@ public class RetrievalService : IRetrievalService
         IApplicationCache applicationCache,
         IFeatureFlagService featureFlagService,
         IRagRuntimeSettings ragRuntimeSettings,
+        IOperationalAuditStore operationalAuditStore,
         ILogger<RetrievalService> logger)
     {
         _indexGateway = indexGateway;
@@ -557,6 +563,7 @@ public class RetrievalService : IRetrievalService
         _applicationCache = applicationCache;
         _featureFlagService = featureFlagService;
         _ragRuntimeSettings = ragRuntimeSettings;
+        _operationalAuditStore = operationalAuditStore;
         _logger = logger;
     }
 
@@ -585,6 +592,12 @@ public class RetrievalService : IRetrievalService
         var cached = await _applicationCache.GetAsync<RetrievalResultDto>(cacheKey, ct);
         if (cached is not null)
         {
+            await WriteRetrievalLogAsync(query, requestedTopK, cached, filters, new Dictionary<string, object?>
+            {
+                ["candidateCount"] = candidateCount,
+                ["semanticRankingEnabled"] = semanticRankingEnabled,
+                ["cacheHit"] = true
+            }, ct);
             return cached;
         }
 
@@ -649,7 +662,37 @@ public class RetrievalService : IRetrievalService
         };
 
         await _applicationCache.SetAsync(cacheKey, retrievalResult, _ragRuntimeSettings.RetrievalCacheTtl, ct);
+        await WriteRetrievalLogAsync(query, requestedTopK, retrievalResult, filters, new Dictionary<string, object?>
+        {
+            ["candidateCount"] = candidateCount,
+            ["semanticRankingEnabled"] = semanticRankingEnabled,
+            ["authorizedResults"] = authorizedResults.Count,
+            ["rerankedResults"] = rerankedResults.Count,
+            ["cacheHit"] = false
+        }, ct);
         return retrievalResult;
+    }
+
+    private Task WriteRetrievalLogAsync(
+        RetrievalQueryDto query,
+        int requestedTopK,
+        RetrievalResultDto retrievalResult,
+        FileSearchFilterDto filters,
+        Dictionary<string, object?> diagnostics,
+        CancellationToken ct)
+    {
+        return _operationalAuditStore.WriteRetrievalLogAsync(new RetrievalLogRecord
+        {
+            RetrievalLogId = Guid.NewGuid(),
+            TenantId = _requestContextAccessor.TenantId ?? Guid.Empty,
+            QueryText = query.Query,
+            Strategy = retrievalResult.RetrievalStrategy,
+            RequestedTopK = requestedTopK,
+            ReturnedTopK = retrievalResult.Chunks.Count,
+            FiltersJson = JsonSerializer.Serialize(filters, SerializerOptions),
+            DiagnosticsJson = JsonSerializer.Serialize(diagnostics, SerializerOptions),
+            CreatedAtUtc = DateTime.UtcNow
+        }, ct);
     }
 
     public async Task<SearchQueryResponseDto> QueryAsync(SearchQueryRequestDto query, CancellationToken ct)
@@ -882,21 +925,28 @@ public class IngestionService : IIngestionPipeline
         var payload = await ReadContentAsync(command.Content, ct);
         var rawHash = ComputeHash(payload);
         var duplicate = _documentCatalog.FindByContentHash(command.TenantId, rawHash);
-        if (duplicate is not null)
+        var existingFailedDocument = duplicate is not null && CanRetryFailedDuplicate(duplicate)
+            ? duplicate
+            : null;
+
+        if (duplicate is not null && existingFailedDocument is null)
         {
             throw new DuplicateDocumentException($"A document with the same content already exists for this tenant: {duplicate.DocumentId}");
         }
 
         var jobId = Guid.NewGuid();
         var timestamp = DateTime.UtcNow;
-        var storagePath = $"documents/{command.TenantId}/{command.DocumentId}/raw-content";
+        var documentId = existingFailedDocument?.DocumentId ?? command.DocumentId;
+        var createdAtUtc = existingFailedDocument?.CreatedAtUtc ?? timestamp;
+        var version = existingFailedDocument?.Version ?? 1;
+        var storagePath = $"documents/{command.TenantId}/{documentId}/raw-content";
         await _blobGateway.SaveAsync(new MemoryStream(payload, writable: false), storagePath, ct);
 
         var malwareResult = await _malwareScanner.ScanAsync(CloneCommand(command, payload), ct);
         if (!malwareResult.IsSafe)
         {
             var quarantinePath = malwareResult.RequiresQuarantine
-                ? $"quarantine/{command.TenantId}/{command.DocumentId}/{command.FileName}"
+                ? $"quarantine/{command.TenantId}/{documentId}/{command.FileName}"
                 : null;
 
             if (quarantinePath is not null)
@@ -906,15 +956,16 @@ public class IngestionService : IIngestionPipeline
 
             _documentCatalog.Upsert(new DocumentCatalogEntry
             {
-                DocumentId = command.DocumentId,
+                DocumentId = documentId,
                 TenantId = command.TenantId,
                 Title = string.IsNullOrWhiteSpace(command.DocumentTitle) ? command.FileName : command.DocumentTitle,
+                OriginalFileName = command.FileName,
                 ContentType = string.IsNullOrWhiteSpace(command.ContentType) ? "application/octet-stream" : command.ContentType,
                 Source = command.Source,
-                CreatedAtUtc = timestamp,
+                CreatedAtUtc = createdAtUtc,
                 UpdatedAtUtc = timestamp,
                 Status = "Failed",
-                Version = 1,
+                Version = version,
                 ContentHash = rawHash,
                 Tags = command.Tags,
                 Categories = command.Categories,
@@ -932,16 +983,16 @@ public class IngestionService : IIngestionPipeline
 
         _documentCatalog.Upsert(new DocumentCatalogEntry
         {
-            DocumentId = command.DocumentId,
+            DocumentId = documentId,
             TenantId = command.TenantId,
             Title = string.IsNullOrWhiteSpace(command.DocumentTitle) ? command.FileName : command.DocumentTitle,
             OriginalFileName = command.FileName,
             ContentType = string.IsNullOrWhiteSpace(command.ContentType) ? "application/octet-stream" : command.ContentType,
             Source = command.Source,
-            CreatedAtUtc = timestamp,
+            CreatedAtUtc = createdAtUtc,
             UpdatedAtUtc = timestamp,
             Status = "Queued",
-            Version = 1,
+            Version = version,
             ContentHash = rawHash,
             Tags = command.Tags,
             Categories = command.Categories,
@@ -959,7 +1010,7 @@ public class IngestionService : IIngestionPipeline
             await processor.ProcessIngestionAsync(new IngestionBackgroundJob
             {
                 JobId = jobId,
-                DocumentId = command.DocumentId,
+                DocumentId = documentId,
                 TenantId = command.TenantId,
                 FileName = command.FileName,
                 ContentType = command.ContentType,
@@ -980,7 +1031,7 @@ public class IngestionService : IIngestionPipeline
 
         return new UploadDocumentResponseDto
         {
-            DocumentId = command.DocumentId,
+            DocumentId = documentId,
             Status = "Queued",
             IngestionJobId = jobId,
             TimestampUtc = timestamp,
@@ -1174,6 +1225,11 @@ public class IngestionService : IIngestionPipeline
         return Convert.ToHexString(SHA256.HashData(content));
     }
 
+    private static bool CanRetryFailedDuplicate(DocumentCatalogEntry document)
+    {
+        return string.Equals(document.Status, "Failed", StringComparison.OrdinalIgnoreCase);
+    }
+
 }
 
 public sealed class IngestionJobProcessor : IIngestionJobProcessor
@@ -1220,13 +1276,13 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
             using var activity = ChatbotTelemetry.ActivitySource.StartActivity("ingestion.process");
             activity?.SetTag("document.id", job.DocumentId);
             var startedAt = DateTime.UtcNow;
-            UpdateDocumentStatus(job.DocumentId, "Parsing", job.JobId);
+            UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Parsing, job.JobId);
 
             var extracted = await _resiliencePipeline.ExecuteAsync(async token =>
                 await _documentTextExtractor.ExtractAsync(ToCommand(job), token), ct);
             if (string.Equals(extracted.Strategy, "ocr", StringComparison.OrdinalIgnoreCase))
             {
-                UpdateDocumentStatus(job.DocumentId, "OcrProcessing", job.JobId);
+                UpdateDocumentStatus(job.DocumentId, DocumentStatuses.OcrProcessing, job.JobId);
             }
 
             var extraction = EnsureExtractionHasContent(extracted, job.FileName);
@@ -1238,10 +1294,12 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
                 ChatbotTelemetry.PromptInjectionSignals.Add(1);
             }
 
-            UpdateDocumentStatus(job.DocumentId, "Chunking", job.JobId);
+            UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Chunking, job.JobId);
             var chunks = _chunkingStrategy.Chunk(ToCommand(job), extraction);
+            UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Embedding, job.JobId);
             await EnrichChunksAsync(chunks, null, false, ct);
 
+            UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Indexing, job.JobId);
             await _resiliencePipeline.ExecuteAsync(async token =>
             {
                 await _indexGateway.DeleteDocumentAsync(job.DocumentId, token);
@@ -1254,7 +1312,7 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
                 return;
             }
 
-            document.Status = "Indexed";
+            document.Status = DocumentStatuses.Indexed;
             document.StoragePath = job.StoragePath;
             document.QuarantinePath = null;
             document.ContentHash = job.RawHash;
@@ -1273,7 +1331,7 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
             var failed = _documentCatalog.Get(job.DocumentId);
             if (failed is not null)
             {
-                failed.Status = "Failed";
+                failed.Status = DocumentStatuses.Failed;
                 failed.UpdatedAtUtc = DateTime.UtcNow;
                 failed.LastJobId = job.JobId;
                 _documentCatalog.Upsert(failed);
@@ -1303,6 +1361,7 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
             var updatedEmbeddings = 0;
             if (document.Chunks.Count > 0)
             {
+                UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Embedding, job.JobId);
                 foreach (var chunk in document.Chunks)
                 {
                     if (chunk.Embedding is { Length: > 0 } && string.IsNullOrWhiteSpace(job.ForceEmbeddingModel))
@@ -1320,13 +1379,14 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
 
                 if (updatedEmbeddings > 0)
                 {
+                    UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Indexing, job.JobId);
                     await _resiliencePipeline.ExecuteAsync(async token =>
                         await _indexGateway.IndexDocumentChunksAsync(document.Chunks, token), ct);
                 }
             }
 
             document.Version += 1;
-            document.Status = "Indexed";
+            document.Status = DocumentStatuses.Indexed;
             document.UpdatedAtUtc = DateTime.UtcNow;
             _documentCatalog.Upsert(document);
         }
@@ -1336,7 +1396,7 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
             var document = _documentCatalog.Get(job.DocumentId);
             if (document is not null)
             {
-                document.Status = "Failed";
+                document.Status = DocumentStatuses.Failed;
                 document.UpdatedAtUtc = DateTime.UtcNow;
                 _documentCatalog.Upsert(document);
             }
@@ -1351,12 +1411,16 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
             return;
         }
 
-        UpdateDocumentStatus(job.DocumentId, "Parsing", job.JobId);
+        UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Parsing, job.JobId);
         await using var content = await _blobGateway.GetAsync(document.StoragePath, ct);
         var payload = await ReadContentAsync(content, ct);
         var command = BuildReindexCommand(document, payload);
         var extracted = await _resiliencePipeline.ExecuteAsync(async token =>
             await _documentTextExtractor.ExtractAsync(command, token), ct);
+        if (string.Equals(extracted.Strategy, "ocr", StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateDocumentStatus(job.DocumentId, DocumentStatuses.OcrProcessing, job.JobId);
+        }
         var extraction = EnsureExtractionHasContent(extracted, command.FileName);
         var normalizedText = extraction.Text;
 
@@ -1366,10 +1430,12 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
             ChatbotTelemetry.PromptInjectionSignals.Add(1);
         }
 
-        UpdateDocumentStatus(job.DocumentId, "Chunking", job.JobId);
+        UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Chunking, job.JobId);
         var chunks = _chunkingStrategy.Chunk(command, extraction);
+        UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Embedding, job.JobId);
         await EnrichChunksAsync(chunks, job.ForceEmbeddingModel, false, ct);
 
+        UpdateDocumentStatus(job.DocumentId, DocumentStatuses.Indexing, job.JobId);
         await _resiliencePipeline.ExecuteAsync(async token =>
         {
             await _indexGateway.DeleteDocumentAsync(job.DocumentId, token);
@@ -1377,7 +1443,7 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
         }, ct);
 
         document.Version += 1;
-        document.Status = "Indexed";
+        document.Status = DocumentStatuses.Indexed;
         document.ContentHash = ComputeHash(payload);
         document.ContentType = command.ContentType;
         document.OriginalFileName = command.FileName;
@@ -1477,6 +1543,8 @@ public sealed class IngestionJobProcessor : IIngestionJobProcessor
             "image/png" => ".png",
             "image/jpeg" => ".jpg",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ".xlsx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => ".pptx",
             _ => ".bin"
         };
 

@@ -1,4 +1,27 @@
 services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${SQLSERVER_SA_PASSWORD:-Your_password123}
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    networks:
+      - chatbot-network
+
+  redis-stack:
+    image: redis/redis-stack-server:latest
+    ports:
+      - "6379:6379"
+      - "8001:8001"
+    volumes:
+      - redis-stack-data:/data
+    networks:
+      - chatbot-network
+
   chatbot-api:
     platform: linux/amd64
     build:
@@ -10,12 +33,30 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
       - DOTNET_RUNNING_IN_CONTAINER=true
-      - ConnectionStrings__DefaultConnection=[A PREENCHER]
+      - ConnectionStrings__DefaultConnection=Data Source=sqlserver,1433;Initial Catalog=TP_DB;User ID=sa;Password=${SQLSERVER_SA_PASSWORD:-Your_password123};Pooling=False;TrustServerCertificate=True;
+      - LocalPersistenceOptions__BasePath=/app/artifacts/local-rag
+      - VectorStoreOptions__Provider=redisstack
+      - VectorStoreOptions__ConnectionString=redis-stack:6379,abortConnect=false
+      - RedisSettings__Server=redis-stack
+      - RedisSettings__Port=6379
+      - RedisCoordinationOptions__Enabled=true
+      - RedisCoordinationOptions__Configuration=redis-stack:6379
+      - ExternalProviderClientOptions__OpenAiCompatibleBaseUrl=http://host.docker.internal:11434/v1
     volumes:
       - ./logs:/app/logs
+      - ./artifacts:/app/artifacts
+    depends_on:
+      - sqlserver
+      - redis-stack
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - chatbot-network
 
 networks:
   chatbot-network:
     driver: bridge
+
+volumes:
+  sqlserver-data:
+  redis-stack-data:

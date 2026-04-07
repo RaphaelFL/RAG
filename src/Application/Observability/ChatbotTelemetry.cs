@@ -18,6 +18,11 @@ public static class ChatbotTelemetry
     public static readonly Counter<long> CacheMisses = Meter.CreateCounter<long>("chatbot.cache.misses");
     public static readonly Counter<long> OcrAvoided = Meter.CreateCounter<long>("chatbot.ocr.avoided");
     public static readonly Counter<long> EmbeddingReuse = Meter.CreateCounter<long>("chatbot.embedding.reuse");
+    public static readonly Counter<long> EmbeddingFallbacks = Meter.CreateCounter<long>("chatbot.embedding.fallbacks");
+    public static readonly Counter<long> AgentToolInvocations = Meter.CreateCounter<long>("chatbot.agent.tool.invocations");
     public static readonly Histogram<double> RetrievalLatencyMs = Meter.CreateHistogram<double>("chatbot.retrieval.latency.ms");
     public static readonly Histogram<double> IngestionLatencyMs = Meter.CreateHistogram<double>("chatbot.ingestion.latency.ms");
+    public static readonly Histogram<double> EmbeddingLatencyMs = Meter.CreateHistogram<double>("chatbot.embedding.latency.ms");
+    public static readonly Histogram<double> VectorStoreLatencyMs = Meter.CreateHistogram<double>("chatbot.vector_store.latency.ms");
+    public static readonly Histogram<double> PromptAssemblyLatencyMs = Meter.CreateHistogram<double>("chatbot.prompt_assembly.latency.ms");
 }

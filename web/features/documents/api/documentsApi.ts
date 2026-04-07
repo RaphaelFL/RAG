@@ -1,7 +1,7 @@
 import { ApiError, apiRequest } from '@/lib/http';
 import { buildProxyUrl } from '@/lib/runtimeEnvironment';
 import type { RuntimeEnvironment } from '@/types/app';
-import type { BulkReindexResponse, DocumentDetails, DocumentMetadataSuggestion, UploadDocumentResponse } from '@/features/documents/types/documents';
+import type { BulkReindexResponse, DocumentDetails, DocumentMetadataSuggestion, DocumentStatus, UploadDocumentResponse } from '@/features/documents/types/documents';
 
 export async function suggestDocumentMetadata(
   env: RuntimeEnvironment,
@@ -87,7 +87,7 @@ export async function getDocument(env: RuntimeEnvironment, documentId: string) {
 }
 
 export async function reindexDocument(env: RuntimeEnvironment, documentId: string, fullReindex: boolean) {
-  return apiRequest<{ documentId: string; status: string; chunksReindexed: number; jobId?: string | null }>(
+  return apiRequest<{ documentId: string; status: DocumentStatus; chunksReindexed: number; jobId?: string | null }>(
     env,
     `/api/v1/documents/${documentId}/reindex`,
     {

@@ -3,7 +3,6 @@ namespace Chatbot.Infrastructure.Configuration;
 public sealed class ChatModelOptions
 {
     public string Model { get; set; } = string.Empty;
-    public string Deployment { get; set; } = string.Empty;
     public double Temperature { get; set; }
     public int MaxTokens { get; set; }
     public int MaxPromptContextTokens { get; set; } = 2800;
@@ -13,7 +12,6 @@ public sealed class ChatModelOptions
 public sealed class EmbeddingOptions
 {
     public string Model { get; set; } = string.Empty;
-    public string Deployment { get; set; } = string.Empty;
     public int Dimensions { get; set; }
     public int BatchSize { get; set; }
 }
@@ -79,7 +77,6 @@ public sealed class RedisSettings
 
 public sealed class BlobStorageOptions
 {
-    public string ConnectionString { get; set; } = string.Empty;
     public string ContainerName { get; set; } = string.Empty;
 }
 
@@ -95,7 +92,6 @@ public sealed class OcrOptions
 {
     public string PrimaryProvider { get; set; } = string.Empty;
     public string FallbackProvider { get; set; } = string.Empty;
-    public string AzureDocumentIntelligenceModelId { get; set; } = string.Empty;
     public bool EnableFallback { get; set; }
     public bool EnableSelectiveOcr { get; set; } = true;
     public int MinimumDirectTextCharacters { get; set; } = 120;
@@ -131,37 +127,15 @@ public sealed class ProviderExecutionModeOptions
 public sealed class ExternalProviderClientOptions
 {
     public int TimeoutSeconds { get; set; }
-    public bool UseAzureAdAuthentication { get; set; }
     public string OpenAiCompatibleBaseUrl { get; set; } = string.Empty;
     public string OpenAiCompatibleApiKey { get; set; } = string.Empty;
     public string OpenAiCompatibleChatModel { get; set; } = string.Empty;
-    public string OpenAiCompatibleEmbeddingModel { get; set; } = string.Empty;
     public string OpenAiCompatibleVisionModel { get; set; } = string.Empty;
-    public string AzureOpenAiBaseUrl { get; set; } = string.Empty;
-    public string AzureOpenAiApiKey { get; set; } = string.Empty;
-    public string AzureOpenAiApiVersion { get; set; } = string.Empty;
-    public string AzureOpenAiChatDeployment { get; set; } = string.Empty;
-    public string AzureOpenAiEmbeddingDeployment { get; set; } = string.Empty;
-    public string AzureSearchBaseUrl { get; set; } = string.Empty;
-    public string AzureSearchApiKey { get; set; } = string.Empty;
-    public string AzureSearchApiVersion { get; set; } = string.Empty;
-    public string BlobStorageBaseUrl { get; set; } = string.Empty;
-    public string AzureDocumentIntelligenceBaseUrl { get; set; } = string.Empty;
-    public string AzureDocumentIntelligenceApiKey { get; set; } = string.Empty;
-    public string AzureDocumentIntelligenceApiVersion { get; set; } = string.Empty;
-    public string GoogleVisionBaseUrl { get; set; } = string.Empty;
-    public string GoogleVisionApiKey { get; set; } = string.Empty;
 
     public bool HasOpenAiCompatibleChatConfiguration(string? fallbackModel = null)
     {
         return HasConfiguredValue(OpenAiCompatibleBaseUrl)
             && HasConfiguredValue(ResolveOpenAiCompatibleChatModel(fallbackModel));
-    }
-
-    public bool HasOpenAiCompatibleEmbeddingConfiguration(string? fallbackModel = null)
-    {
-        return HasConfiguredValue(OpenAiCompatibleBaseUrl)
-            && HasConfiguredValue(ResolveOpenAiCompatibleEmbeddingModel(fallbackModel));
     }
 
     public bool HasOpenAiCompatibleVisionConfiguration()
@@ -177,45 +151,6 @@ public sealed class ExternalProviderClientOptions
             : fallbackModel ?? string.Empty;
     }
 
-    public string ResolveOpenAiCompatibleEmbeddingModel(string? fallbackModel = null)
-    {
-        return HasConfiguredValue(OpenAiCompatibleEmbeddingModel)
-            ? OpenAiCompatibleEmbeddingModel
-            : fallbackModel ?? string.Empty;
-    }
-
-    public bool HasAzureOpenAiChatConfiguration()
-    {
-        return HasConfiguredValue(AzureOpenAiBaseUrl)
-            && (HasConfiguredValue(AzureOpenAiApiKey) || UseAzureAdAuthentication)
-            && HasConfiguredValue(AzureOpenAiChatDeployment);
-    }
-
-    public bool HasAzureOpenAiEmbeddingConfiguration()
-    {
-        return HasConfiguredValue(AzureOpenAiBaseUrl)
-            && (HasConfiguredValue(AzureOpenAiApiKey) || UseAzureAdAuthentication)
-            && HasConfiguredValue(AzureOpenAiEmbeddingDeployment);
-    }
-
-    public bool HasAzureSearchConfiguration()
-    {
-        return HasConfiguredValue(AzureSearchBaseUrl)
-            && (HasConfiguredValue(AzureSearchApiKey) || UseAzureAdAuthentication);
-    }
-
-    public bool HasAzureDocumentIntelligenceConfiguration()
-    {
-        return HasConfiguredValue(AzureDocumentIntelligenceBaseUrl)
-            && (HasConfiguredValue(AzureDocumentIntelligenceApiKey) || UseAzureAdAuthentication);
-    }
-
-    public bool HasGoogleVisionConfiguration()
-    {
-        return HasConfiguredValue(GoogleVisionBaseUrl)
-            && HasConfiguredValue(GoogleVisionApiKey);
-    }
-
     public static bool HasConfiguredValue(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -229,5 +164,4 @@ public sealed class ExternalProviderClientOptions
             && !value.Contains("changeme", StringComparison.OrdinalIgnoreCase)
             && !value.Contains("placeholder", StringComparison.OrdinalIgnoreCase);
     }
-
 }

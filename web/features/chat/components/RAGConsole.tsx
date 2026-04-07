@@ -199,6 +199,7 @@ export function MessageCard({ message }: Readonly<{ message: ChatMessageModel }>
           <strong>{message.role === 'assistant' ? 'Assistant' : 'User'}</strong>
           <span>{new Date(message.createdAtUtc).toLocaleString('pt-BR')}</span>
         </div>
+  onRefreshStatus,
         {message.isStreaming ? <span className="badge badge-accent">Streaming</span> : null}
       </header>
 
@@ -275,6 +276,7 @@ function UploadPanel({
     category?: string;
     tags?: string[];
     error?: string;
+    statusMessage?: string;
     details?: {
       title: string;
       version: number;
@@ -656,6 +658,7 @@ function UploadHistoryList({
     category?: string;
     tags?: string[];
     error?: string;
+    statusMessage?: string;
     details?: {
       title: string;
       version: number;
@@ -710,6 +713,7 @@ function UploadStatusEntry({
     category?: string;
     tags?: string[];
     error?: string;
+    statusMessage?: string;
     details?: {
       title: string;
       version: number;
@@ -721,10 +725,10 @@ function UploadStatusEntry({
   canIncrementalReindex: boolean;
   canFullReindex: boolean;
 }>) {
-  const statusLabel = upload.status;
+  const statusLabel = getStatusLabel(upload.status);
   const statusColor = getStatusColor(upload.status);
   const hasDetails = upload.details !== undefined;
-  const hasActions = upload.documentId && (canIncrementalReindex || canFullReindex);
+  const hasActions = upload.documentId !== undefined;
 
   return (
     <article className="upload-status-entry">
@@ -733,6 +737,7 @@ function UploadStatusEntry({
         <span className={clsx('badge', statusColor)}>{statusLabel}</span>
       </header>
       {upload.error ? <p className="error-details">{upload.error}</p> : null}
+      {upload.statusMessage ? <p className="field-hint">{upload.statusMessage}</p> : null}
       <p className="field-hint">
         {upload.category ? `${upload.category} | ` : ''}
         {upload.tags?.join(', ')}
@@ -760,12 +765,48 @@ function getStatusColor(status: string) {
     case 'Requested':
     case 'Queued':
     case 'Processing':
+    case 'ReindexPending':
       return 'badge-warning';
+    case 'Parsing':
+    case 'OcrProcessing':
+    case 'Chunking':
+    case 'Embedding':
+    case 'Indexing':
+      return 'badge-accent';
     case 'Indexed':
       return 'badge-success';
     case 'Failed':
       return 'badge-danger';
     default:
       return 'badge-neutral';
+  }
+}
+
+function getStatusLabel(status: string) {
+  switch (status) {
+    case 'Requested':
+      return 'Solicitado';
+    case 'Queued':
+      return 'Na fila';
+    case 'Processing':
+      return 'Processando';
+    case 'Parsing':
+      return 'Extraindo texto';
+    case 'OcrProcessing':
+      return 'Processando OCR';
+    case 'Chunking':
+      return 'Separando em chunks';
+    case 'Embedding':
+      return 'Gerando embeddings';
+    case 'Indexing':
+      return 'Indexando';
+    case 'Indexed':
+      return 'Indexado';
+    case 'ReindexPending':
+      return 'Reindexação pendente';
+    case 'Failed':
+      return 'Falhou';
+    default:
+      return status;
   }
 }

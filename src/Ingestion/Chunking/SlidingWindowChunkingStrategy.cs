@@ -82,6 +82,7 @@ public sealed class SlidingWindowChunkingStrategy : IChunkingStrategy
 
         foreach (var page in pages)
         {
+            var pageSection = string.IsNullOrWhiteSpace(page.SectionTitle) ? currentSection : page.SectionTitle!;
             foreach (var paragraph in SplitParagraphs(page.Text))
             {
                 if (string.IsNullOrWhiteSpace(paragraph))
@@ -92,11 +93,11 @@ public sealed class SlidingWindowChunkingStrategy : IChunkingStrategy
                 if (IsHeading(paragraph))
                 {
                     currentSection = NormalizeHeading(paragraph);
-                    paragraphs.Add(new SemanticParagraph(currentSection, page.PageNumber, page.PageNumber, currentSection, true));
+                    paragraphs.Add(new SemanticParagraph(currentSection, page.PageNumber, page.PageNumber, currentSection, true, page.WorksheetName, page.SlideNumber, page.TableId, page.FormId));
                     continue;
                 }
 
-                paragraphs.Add(new SemanticParagraph(paragraph, page.PageNumber, page.PageNumber, currentSection, false));
+                paragraphs.Add(new SemanticParagraph(paragraph, page.PageNumber, page.PageNumber, pageSection, false, page.WorksheetName, page.SlideNumber, page.TableId, page.FormId));
             }
         }
 
@@ -124,7 +125,7 @@ public sealed class SlidingWindowChunkingStrategy : IChunkingStrategy
                 var sentenceTokens = EstimateTokens(normalizedSentence);
                 if (buffer.Count > 0 && bufferTokens + sentenceTokens > maxTokens)
                 {
-                    expanded.Add(new SemanticParagraph(string.Join(' ', buffer), paragraph.StartPage, paragraph.EndPage, paragraph.Section, paragraph.IsHeading));
+                    expanded.Add(new SemanticParagraph(string.Join(' ', buffer), paragraph.StartPage, paragraph.EndPage, paragraph.Section, paragraph.IsHeading, paragraph.WorksheetName, paragraph.SlideNumber, paragraph.TableId, paragraph.FormId));
                     buffer.Clear();
                     bufferTokens = 0;
                 }
@@ -135,7 +136,7 @@ public sealed class SlidingWindowChunkingStrategy : IChunkingStrategy
 
             if (buffer.Count > 0)
             {
-                expanded.Add(new SemanticParagraph(string.Join(' ', buffer), paragraph.StartPage, paragraph.EndPage, paragraph.Section, paragraph.IsHeading));
+                expanded.Add(new SemanticParagraph(string.Join(' ', buffer), paragraph.StartPage, paragraph.EndPage, paragraph.Section, paragraph.IsHeading, paragraph.WorksheetName, paragraph.SlideNumber, paragraph.TableId, paragraph.FormId));
             }
         }
 
@@ -201,8 +202,34 @@ public sealed class SlidingWindowChunkingStrategy : IChunkingStrategy
         var startPage = paragraphs.Min(paragraph => paragraph.StartPage);
         var endPage = paragraphs.Max(paragraph => paragraph.EndPage);
         var section = paragraphs.Select(paragraph => paragraph.Section).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? ResolveDocumentTitle(command);
+        var worksheetName = paragraphs.Select(paragraph => paragraph.WorksheetName).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        var slideNumber = paragraphs.Select(paragraph => paragraph.SlideNumber).FirstOrDefault(value => value.HasValue);
+        var tableId = paragraphs.Select(paragraph => paragraph.TableId).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        var formId = paragraphs.Select(paragraph => paragraph.FormId).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
         var content = string.Join("\n\n", paragraphs.Select(paragraph => paragraph.Text)).Trim();
         var metadata = BuildMetadata(command, section, startPage, endPage, EstimateTokens(content));
+        metadata["chunkIndex"] = index.ToString();
+        metadata["chunkingStrategy"] = nameof(SlidingWindowChunkingStrategy);
+
+        if (!string.IsNullOrWhiteSpace(worksheetName))
+        {
+            metadata["worksheetName"] = worksheetName;
+        }
+
+        if (slideNumber.HasValue)
+        {
+            metadata["slideNumber"] = slideNumber.Value.ToString();
+        }
+
+        if (!string.IsNullOrWhiteSpace(tableId))
+        {
+            metadata["tableId"] = tableId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(formId))
+        {
+            metadata["formId"] = formId;
+        }
 
         return new DocumentChunkIndexDto
         {
@@ -338,11 +365,14 @@ public sealed class SlidingWindowChunkingStrategy : IChunkingStrategy
         return new Dictionary<string, string>
         {
             ["title"] = ResolveDocumentTitle(command),
+            ["sourceName"] = command.FileName,
             ["originalFileName"] = command.FileName,
             ["contentType"] = command.ContentType,
             ["tenantId"] = command.TenantId.ToString(),
             ["category"] = command.Category ?? string.Empty,
             ["source"] = command.Source ?? string.Empty,
+            ["sourceType"] = command.Source ?? string.Empty,
+            ["accessPolicy"] = command.AccessPolicy ?? string.Empty,
             ["section"] = section,
             ["startPage"] = startPage.ToString(),
             ["endPage"] = endPage.ToString(),
@@ -352,7 +382,7 @@ public sealed class SlidingWindowChunkingStrategy : IChunkingStrategy
         };
     }
 
-    private sealed record SemanticParagraph(string Text, int StartPage, int EndPage, string Section, bool IsHeading)
+    private sealed record SemanticParagraph(string Text, int StartPage, int EndPage, string Section, bool IsHeading, string? WorksheetName, int? SlideNumber, string? TableId, string? FormId)
     {
         public int EstimatedTokens { get; } = EstimateTokens(Text);
     }

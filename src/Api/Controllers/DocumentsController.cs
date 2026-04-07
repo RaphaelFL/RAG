@@ -18,7 +18,7 @@ public class DocumentsController : ControllerBase
 {
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".pdf", ".docx", ".png", ".jpg", ".jpeg"
+        ".pdf", ".docx", ".xlsx", ".pptx", ".png", ".jpg", ".jpeg"
     };
 
     private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -35,6 +35,8 @@ public class DocumentsController : ControllerBase
     {
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "image/png",
         "image/jpeg"
     };
@@ -384,6 +386,16 @@ public class DocumentsController : ControllerBase
         }
 
         if (MatchesBinaryType(extension, contentType, ".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+        {
+            return header.Length >= 4 && header[0] == 0x50 && header[1] == 0x4B;
+        }
+
+        if (MatchesBinaryType(extension, contentType, ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+        {
+            return header.Length >= 4 && header[0] == 0x50 && header[1] == 0x4B;
+        }
+
+        if (MatchesBinaryType(extension, contentType, ".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"))
         {
             return header.Length >= 4 && header[0] == 0x50 && header[1] == 0x4B;
         }
