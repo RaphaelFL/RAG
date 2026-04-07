@@ -26,6 +26,8 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new RetrievalCacheKeyFactory(),
+            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
             new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
@@ -80,6 +82,8 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService { IsSemanticRankingEnabled = false },
             new StaticRagRuntimeSettings(),
+            new RetrievalCacheKeyFactory(),
+            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
             new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
@@ -130,6 +134,8 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new RetrievalCacheKeyFactory(),
+            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
             new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
@@ -189,6 +195,8 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new RetrievalCacheKeyFactory(),
+            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
             new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
@@ -242,6 +250,8 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new RetrievalCacheKeyFactory(),
+            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
             new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 
@@ -294,6 +304,8 @@ public class RetrievalServiceTests
             new InMemoryApplicationCache(),
             new StaticFeatureFlagService(),
             new StaticRagRuntimeSettings(),
+            new RetrievalCacheKeyFactory(),
+            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
             new NoOpOperationalAuditStore(),
             NullLogger<RetrievalService>.Instance);
 

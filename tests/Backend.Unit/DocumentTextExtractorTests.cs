@@ -100,18 +100,20 @@ public class DocumentTextExtractorTests
     public async Task ExtractAsync_ShouldKeepDirectPdfText_WhenTextCoverageIsEnough()
     {
         var ocrProvider = new TrackingOcrProvider();
+        var ocrOptions = Options.Create(new OcrOptions
+        {
+            PrimaryProvider = "AzureDocumentIntelligence",
+            FallbackProvider = "GoogleVision",
+            EnableFallback = true,
+            EnableSelectiveOcr = true,
+            MinimumDirectTextCharacters = 30,
+            MinimumDirectTextCoverageRatio = 0.01
+        });
         var sut = new DocumentTextExtractor(
             new[] { new DirectDocumentParser() },
             ocrProvider,
-            Options.Create(new OcrOptions
-            {
-                PrimaryProvider = "AzureDocumentIntelligence",
-                FallbackProvider = "GoogleVision",
-                EnableFallback = true,
-                EnableSelectiveOcr = true,
-                MinimumDirectTextCharacters = 30,
-                MinimumDirectTextCoverageRatio = 0.01
-            }));
+            new DocumentExtractionStrategyDecider(ocrOptions),
+            new DocumentExtractionResultBuilder());
 
         const string pdfContent = "%PDF-1.4\n1 0 obj\n<< /Length 88 >>\nstream\nBT\n/F1 12 Tf\n72 720 Td\n(PDF textual com muito conteudo legivel para evitar OCR.) Tj\nET\nendstream\nendobj\n%%EOF";
         await using var content = new MemoryStream(Encoding.Latin1.GetBytes(pdfContent));
@@ -154,18 +156,20 @@ public class DocumentTextExtractorTests
     public async Task ExtractAsync_ShouldFallbackToOcr_WhenPdfContainsOnlyBinaryArtifacts()
     {
         var ocrProvider = new TrackingOcrProvider { Text = "ocr extraido" };
+        var ocrOptions = Options.Create(new OcrOptions
+        {
+            PrimaryProvider = "AzureDocumentIntelligence",
+            FallbackProvider = "GoogleVision",
+            EnableFallback = true,
+            EnableSelectiveOcr = true,
+            MinimumDirectTextCharacters = 30,
+            MinimumDirectTextCoverageRatio = 0.01
+        });
         var sut = new DocumentTextExtractor(
             new[] { new DirectDocumentParser() },
             ocrProvider,
-            Options.Create(new OcrOptions
-            {
-                PrimaryProvider = "AzureDocumentIntelligence",
-                FallbackProvider = "GoogleVision",
-                EnableFallback = true,
-                EnableSelectiveOcr = true,
-                MinimumDirectTextCharacters = 30,
-                MinimumDirectTextCoverageRatio = 0.01
-            }));
+            new DocumentExtractionStrategyDecider(ocrOptions),
+            new DocumentExtractionResultBuilder());
 
         await using var content = new MemoryStream(Encoding.Latin1.GetBytes("%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\nxref\ntrailer\n%%EOF"));
 
@@ -188,18 +192,20 @@ public class DocumentTextExtractorTests
     public async Task ExtractAsync_ShouldFallbackToOcr_WhenPdfCannotBeParsedAndUtf8FallbackWouldBeGarbage()
     {
         var ocrProvider = new TrackingOcrProvider { Text = "texto OCR confiavel" };
+        var ocrOptions = Options.Create(new OcrOptions
+        {
+            PrimaryProvider = "AzureDocumentIntelligence",
+            FallbackProvider = "GoogleVision",
+            EnableFallback = true,
+            EnableSelectiveOcr = true,
+            MinimumDirectTextCharacters = 30,
+            MinimumDirectTextCoverageRatio = 0.01
+        });
         var sut = new DocumentTextExtractor(
             new[] { new DirectDocumentParser() },
             ocrProvider,
-            Options.Create(new OcrOptions
-            {
-                PrimaryProvider = "AzureDocumentIntelligence",
-                FallbackProvider = "GoogleVision",
-                EnableFallback = true,
-                EnableSelectiveOcr = true,
-                MinimumDirectTextCharacters = 30,
-                MinimumDirectTextCoverageRatio = 0.01
-            }));
+            new DocumentExtractionStrategyDecider(ocrOptions),
+            new DocumentExtractionResultBuilder());
 
         var pdfBytes = new byte[]
         {
@@ -237,18 +243,20 @@ public class DocumentTextExtractorTests
     public async Task ExtractAsync_ShouldFallbackToOcr_WhenPdfLiteralTextContainsControlCharacters()
     {
         var ocrProvider = new TrackingOcrProvider { Text = "ocr confiavel" };
+        var ocrOptions = Options.Create(new OcrOptions
+        {
+            PrimaryProvider = "AzureDocumentIntelligence",
+            FallbackProvider = "GoogleVision",
+            EnableFallback = true,
+            EnableSelectiveOcr = true,
+            MinimumDirectTextCharacters = 30,
+            MinimumDirectTextCoverageRatio = 0.01
+        });
         var sut = new DocumentTextExtractor(
             new[] { new DirectDocumentParser() },
             ocrProvider,
-            Options.Create(new OcrOptions
-            {
-                PrimaryProvider = "AzureDocumentIntelligence",
-                FallbackProvider = "GoogleVision",
-                EnableFallback = true,
-                EnableSelectiveOcr = true,
-                MinimumDirectTextCharacters = 30,
-                MinimumDirectTextCoverageRatio = 0.01
-            }));
+            new DocumentExtractionStrategyDecider(ocrOptions),
+            new DocumentExtractionResultBuilder());
 
         const string pdfContent = @"%PDF-1.4
 1 0 obj
@@ -318,18 +326,21 @@ endobj
             }),
             auditLogger);
 
+        var ocrOptions = Options.Create(new OcrOptions
+        {
+            PrimaryProvider = "AzureDocumentIntelligence",
+            FallbackProvider = "GoogleVision",
+            EnableFallback = true,
+            EnableSelectiveOcr = true,
+            MinimumDirectTextCharacters = 120,
+            MinimumDirectTextCoverageRatio = 0.02
+        });
+
         return new DocumentTextExtractor(
             new[] { new DirectDocumentParser() },
             ocrProvider,
-            Options.Create(new OcrOptions
-            {
-                PrimaryProvider = "AzureDocumentIntelligence",
-                FallbackProvider = "GoogleVision",
-                EnableFallback = true,
-                EnableSelectiveOcr = true,
-                MinimumDirectTextCharacters = 120,
-                MinimumDirectTextCoverageRatio = 0.02
-            }));
+            new DocumentExtractionStrategyDecider(ocrOptions),
+            new DocumentExtractionResultBuilder());
     }
 
 }

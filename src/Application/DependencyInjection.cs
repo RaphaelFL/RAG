@@ -19,8 +19,14 @@ public static class ApplicationServiceRegistration
             return CreateOperationalResiliencePipeline(options);
         });
         services.AddSingleton<NoOpOperationalAuditStore>();
+        services.AddScoped<IChatRequestTemplateResolver, ChatRequestTemplateResolver>();
+        services.AddSingleton<IChatEvidenceSelector, ChatEvidenceSelector>();
+        services.AddSingleton<IChatStreamingSegmenter, ChatStreamingSegmenter>();
+        services.AddSingleton<IChatCompletionCacheKeyFactory, ChatCompletionCacheKeyFactory>();
         services.AddSingleton<IAgenticChatPlanner, LocalAgenticChatPlanner>();
         services.AddScoped<IChatOrchestrator, ChatOrchestratorService>();
+        services.AddSingleton<IRetrievalCacheKeyFactory, RetrievalCacheKeyFactory>();
+        services.AddScoped<IRetrievalChunkSelector, RetrievalChunkSelector>();
         services.AddScoped<IRetrievalService, RetrievalService>();
         services.AddScoped<ISearchQueryService, SearchQueryService>();
         services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();

@@ -18,6 +18,8 @@ public static class IngestionServiceRegistration
         services.AddSingleton<IDocumentParser, XlsxDocumentParser>();
         services.AddSingleton<IDocumentParser, PptxDocumentParser>();
         services.AddSingleton<IDocumentParser, DirectDocumentParser>();
+        services.AddSingleton<IDocumentExtractionStrategyDecider, DocumentExtractionStrategyDecider>();
+        services.AddSingleton<IDocumentExtractionResultBuilder, DocumentExtractionResultBuilder>();
         services.AddScoped<IDocumentTextExtractor, DocumentTextExtractor>();
 
         return services;
