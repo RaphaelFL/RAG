@@ -36,6 +36,11 @@ public static class ApplicationServiceRegistration
         services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
         services.AddScoped<IDocumentReindexService, DocumentReindexService>();
         services.AddScoped<IDocumentQueryService, DocumentQueryService>();
+        services.AddScoped<IDocumentMetadataExtractionService, DocumentMetadataExtractionService>();
+        services.AddSingleton<IDocumentMetadataTitleSuggester, DocumentMetadataTitleSuggester>();
+        services.AddSingleton<IDocumentMetadataCategorySuggester, DocumentMetadataCategorySuggester>();
+        services.AddSingleton<IDocumentMetadataTagSuggester, DocumentMetadataTagSuggester>();
+        services.AddSingleton<IDocumentMetadataPreviewBuilder, DocumentMetadataPreviewBuilder>();
         services.AddScoped<IDocumentMetadataSuggestionService, DocumentMetadataSuggestionService>();
         services.AddScoped<IIngestionCommandFactory, IngestionCommandFactory>();
         services.AddScoped<IIngestionExtractionService, IngestionExtractionService>();

@@ -11,12 +11,21 @@ namespace Backend.Unit;
 
 public class DocumentMetadataSuggestionServiceTests
 {
+    private static DocumentMetadataSuggestionService CreateSut(IDocumentTextExtractor documentTextExtractor)
+    {
+        return new DocumentMetadataSuggestionService(
+            new DocumentMetadataExtractionService(documentTextExtractor, NullLogger<DocumentMetadataExtractionService>.Instance),
+            new DocumentMetadataTitleSuggester(),
+            new DocumentMetadataCategorySuggester(),
+            new DocumentMetadataTagSuggester(),
+            new DocumentMetadataPreviewBuilder());
+    }
+
     [Fact]
     public async Task SuggestAsync_ShouldInferArchitectureMetadata_FromExtractedText()
     {
-        var sut = new DocumentMetadataSuggestionService(new StubDocumentTextExtractor(
-            "ARQUITETURA DE INTEGRACAO CORPORATIVA\nEste documento descreve integracao entre APIs, servicos e sistema legado."),
-            NullLogger<DocumentMetadataSuggestionService>.Instance);
+        var sut = CreateSut(new StubDocumentTextExtractor(
+            "ARQUITETURA DE INTEGRACAO CORPORATIVA\nEste documento descreve integracao entre APIs, servicos e sistema legado."));
 
         var result = await sut.SuggestAsync(new IngestDocumentCommand
         {
@@ -37,9 +46,7 @@ public class DocumentMetadataSuggestionServiceTests
     [Fact]
     public async Task SuggestAsync_ShouldFallbackToFileName_WhenNoExtractedTextExists()
     {
-        var sut = new DocumentMetadataSuggestionService(
-            new StubDocumentTextExtractor(string.Empty),
-            NullLogger<DocumentMetadataSuggestionService>.Instance);
+        var sut = CreateSut(new StubDocumentTextExtractor(string.Empty));
 
         var result = await sut.SuggestAsync(new IngestDocumentCommand
         {
@@ -57,9 +64,7 @@ public class DocumentMetadataSuggestionServiceTests
     [Fact]
     public async Task SuggestAsync_ShouldFallbackToFileName_WhenPdfExtractionFails()
     {
-        var sut = new DocumentMetadataSuggestionService(
-            new ThrowingDocumentTextExtractor(new InvalidOperationException("ocr indisponivel")),
-            NullLogger<DocumentMetadataSuggestionService>.Instance);
+        var sut = CreateSut(new ThrowingDocumentTextExtractor(new InvalidOperationException("ocr indisponivel")));
 
         var result = await sut.SuggestAsync(new IngestDocumentCommand
         {
