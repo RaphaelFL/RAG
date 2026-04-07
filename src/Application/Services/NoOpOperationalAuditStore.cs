@@ -3,7 +3,7 @@ using Chatbot.Domain.Entities;
 
 namespace Chatbot.Application.Services;
 
-public sealed class NoOpOperationalAuditStore : IOperationalAuditStore
+public sealed class NoOpOperationalAuditStore : IOperationalAuditWriter, IOperationalAuditReader
 {
     public Task WriteRetrievalLogAsync(RetrievalLogRecord record, CancellationToken ct) => Task.CompletedTask;
 

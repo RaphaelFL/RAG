@@ -45,7 +45,9 @@ public static class InfrastructureServiceRegistration
         services.AddSingleton<ISecurityAuditLogger, SecurityAuditLogger>();
         services.AddSingleton<IDocumentAuthorizationService, DocumentAuthorizationService>();
         services.AddSingleton<IFeatureFlagService, RuntimeFeatureFlagService>();
-        services.AddSingleton<IOperationalAuditStore, FileSystemOperationalAuditStore>();
+        services.AddSingleton<FileSystemOperationalAuditStore>();
+        services.AddSingleton<IOperationalAuditWriter>(serviceProvider => serviceProvider.GetRequiredService<FileSystemOperationalAuditStore>());
+        services.AddSingleton<IOperationalAuditReader>(serviceProvider => serviceProvider.GetRequiredService<FileSystemOperationalAuditStore>());
         services.AddSingleton<RuntimeRagRuntimeSettings>();
         services.AddSingleton<IRagRuntimeSettings>(serviceProvider => serviceProvider.GetRequiredService<RuntimeRagRuntimeSettings>());
         services.AddSingleton<IRagRuntimeAdministrationService>(serviceProvider => serviceProvider.GetRequiredService<RuntimeRagRuntimeSettings>());

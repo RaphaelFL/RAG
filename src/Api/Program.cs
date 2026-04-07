@@ -3,6 +3,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Chatbot.Api.Authentication;
 using Chatbot.Api.Contracts;
+using Chatbot.Api.Documents;
 using Chatbot.Api.Middleware;
 using Chatbot.Application;
 using Chatbot.Application.Abstractions;
@@ -45,6 +46,8 @@ builder.Host.UseSerilog();
 
 // Add services to the container
 builder.Services.AddControllers();
+builder.Services.AddSingleton<IDocumentUploadValidator, DocumentUploadValidator>();
+builder.Services.AddSingleton<IDocumentUploadCommandFactory, DocumentUploadCommandFactory>();
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<ChatRequestValidator>();
 builder.Services.Configure<ApiBehaviorOptions>(options =>

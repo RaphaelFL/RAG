@@ -17,7 +17,7 @@ public sealed class SemanticKernelAgentRuntime : IAgentRuntime
     private readonly IWebSearchTool _webSearchTool;
     private readonly ICodeInterpreter _codeInterpreter;
     private readonly IPromptAssembler _promptAssembler;
-    private readonly IOperationalAuditStore _operationalAuditStore;
+    private readonly IOperationalAuditWriter _operationalAuditWriter;
     private readonly AgentRuntimeOptions _options;
     private readonly ILogger<SemanticKernelAgentRuntime> _logger;
 
@@ -26,7 +26,7 @@ public sealed class SemanticKernelAgentRuntime : IAgentRuntime
         IWebSearchTool webSearchTool,
         ICodeInterpreter codeInterpreter,
         IPromptAssembler promptAssembler,
-        IOperationalAuditStore operationalAuditStore,
+        IOperationalAuditWriter operationalAuditWriter,
         IOptions<AgentRuntimeOptions> options,
         ILogger<SemanticKernelAgentRuntime> logger)
     {
@@ -34,7 +34,7 @@ public sealed class SemanticKernelAgentRuntime : IAgentRuntime
         _webSearchTool = webSearchTool;
         _codeInterpreter = codeInterpreter;
         _promptAssembler = promptAssembler;
-        _operationalAuditStore = operationalAuditStore;
+        _operationalAuditWriter = operationalAuditWriter;
         _options = options.Value;
         _logger = logger;
     }
@@ -174,7 +174,7 @@ public sealed class SemanticKernelAgentRuntime : IAgentRuntime
         };
         onToolExecuted();
         var promptAssembly = await _promptAssembler.AssembleAsync(promptRequest, ct);
-        await _operationalAuditStore.WriteToolExecutionAsync(new ToolExecutionRecord
+        await _operationalAuditWriter.WriteToolExecutionAsync(new ToolExecutionRecord
         {
             ToolExecutionId = Guid.NewGuid(),
             AgentRunId = agentRunId,
@@ -219,7 +219,7 @@ public sealed class SemanticKernelAgentRuntime : IAgentRuntime
         var result = await kernel.InvokeAsync("rag", functionName, arguments, ct);
         var payload = result.GetValue<string>() ?? result.ToString();
 
-        await _operationalAuditStore.WriteToolExecutionAsync(new ToolExecutionRecord
+        await _operationalAuditWriter.WriteToolExecutionAsync(new ToolExecutionRecord
         {
             ToolExecutionId = Guid.NewGuid(),
             AgentRunId = agentRunId,
@@ -236,7 +236,7 @@ public sealed class SemanticKernelAgentRuntime : IAgentRuntime
 
     private Task WriteAgentRunAsync(AgentRunRequest request, AgentRunResult result, int toolBudget, int usedTools, DateTime startedAtUtc, CancellationToken ct)
     {
-        return _operationalAuditStore.WriteAgentRunAsync(new AgentRunRecord
+        return _operationalAuditWriter.WriteAgentRunAsync(new AgentRunRecord
         {
             AgentRunId = result.AgentRunId,
             TenantId = request.TenantId,

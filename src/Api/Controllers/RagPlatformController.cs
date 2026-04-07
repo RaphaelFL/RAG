@@ -25,7 +25,7 @@ public sealed class RagPlatformController : ControllerBase
     private readonly IFileSearchTool _fileSearchTool;
     private readonly ICodeInterpreter _codeInterpreter;
     private readonly IAgentRuntime _agentRuntime;
-    private readonly IOperationalAuditStore _operationalAuditStore;
+    private readonly IOperationalAuditReader _operationalAuditReader;
     private readonly AppCfg.EmbeddingGenerationOptions _embeddingOptions;
     private readonly AppCfg.VectorStoreOptions _vectorStoreOptions;
     private readonly AppCfg.AgentRuntimeOptions _agentRuntimeOptions;
@@ -39,7 +39,7 @@ public sealed class RagPlatformController : ControllerBase
         IFileSearchTool fileSearchTool,
         ICodeInterpreter codeInterpreter,
         IAgentRuntime agentRuntime,
-        IOperationalAuditStore operationalAuditStore,
+        IOperationalAuditReader operationalAuditReader,
         IOptions<AppCfg.EmbeddingGenerationOptions> embeddingOptions,
         IOptions<AppCfg.VectorStoreOptions> vectorStoreOptions,
         IOptions<AppCfg.AgentRuntimeOptions> agentRuntimeOptions,
@@ -52,7 +52,7 @@ public sealed class RagPlatformController : ControllerBase
         _fileSearchTool = fileSearchTool;
         _codeInterpreter = codeInterpreter;
         _agentRuntime = agentRuntime;
-        _operationalAuditStore = operationalAuditStore;
+        _operationalAuditReader = operationalAuditReader;
         _embeddingOptions = embeddingOptions.Value;
         _vectorStoreOptions = vectorStoreOptions.Value;
         _agentRuntimeOptions = agentRuntimeOptions.Value;
@@ -257,7 +257,7 @@ public sealed class RagPlatformController : ControllerBase
         [FromQuery] int limit = 20,
         CancellationToken cancellationToken = default)
     {
-        var result = await _operationalAuditStore.ReadAuditFeedAsync(new OperationalAuditFeedQuery
+        var result = await _operationalAuditReader.ReadAuditFeedAsync(new OperationalAuditFeedQuery
         {
             TenantId = GetTenantId(),
             Category = category,

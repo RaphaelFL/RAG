@@ -5,7 +5,7 @@ using Xunit;
 
 namespace Backend.Unit.CurrentStatePromptAssemblerTestsSupport;
 
-internal sealed class CapturingOperationalAuditStore : IOperationalAuditStore
+internal sealed class CapturingOperationalAuditStore : IOperationalAuditWriter, IOperationalAuditReader
 {
     public Chatbot.Domain.Entities.PromptAssemblyRecord? LastPromptAssembly { get; private set; }
 

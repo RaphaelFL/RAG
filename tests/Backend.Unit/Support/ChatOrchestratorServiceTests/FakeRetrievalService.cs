@@ -20,7 +20,4 @@ internal sealed class FakeRetrievalService : IRetrievalService
     }
 
     public Task<RetrievalResultDto> RetrieveAsync(RetrievalQueryDto query, CancellationToken ct) => Task.FromResult(_result);
-
-    public Task<SearchQueryResponseDto> QueryAsync(SearchQueryRequestDto query, CancellationToken ct) =>
-        Task.FromResult(new SearchQueryResponseDto());
 }

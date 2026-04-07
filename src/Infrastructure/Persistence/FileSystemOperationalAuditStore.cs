@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace Chatbot.Infrastructure.Persistence;
 
-public sealed class FileSystemOperationalAuditStore : IOperationalAuditStore
+public sealed class FileSystemOperationalAuditStore : IOperationalAuditWriter, IOperationalAuditReader
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private static readonly StringComparer CursorComparer = StringComparer.Ordinal;

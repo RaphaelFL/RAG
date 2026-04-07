@@ -10,11 +10,11 @@ public sealed class CurrentStatePromptAssembler : IPromptAssembler
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
-    private readonly IOperationalAuditStore _operationalAuditStore;
+    private readonly IOperationalAuditWriter _operationalAuditWriter;
 
-    public CurrentStatePromptAssembler(IOperationalAuditStore operationalAuditStore)
+    public CurrentStatePromptAssembler(IOperationalAuditWriter operationalAuditWriter)
     {
-        _operationalAuditStore = operationalAuditStore;
+        _operationalAuditWriter = operationalAuditWriter;
     }
 
     public async Task<PromptAssemblyResult> AssembleAsync(PromptAssemblyRequest request, CancellationToken ct)
@@ -66,7 +66,7 @@ public sealed class CurrentStatePromptAssembler : IPromptAssembler
             }).ToArray()
         };
 
-        await _operationalAuditStore.WritePromptAssemblyAsync(new PromptAssemblyRecord
+        await _operationalAuditWriter.WritePromptAssemblyAsync(new PromptAssemblyRecord
         {
             PromptAssemblyId = Guid.NewGuid(),
             TenantId = request.TenantId,

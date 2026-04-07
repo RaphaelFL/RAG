@@ -13,7 +13,8 @@ namespace Chatbot.Mcp;
 public sealed class McpServer : IMcpServer
 {
     private readonly IRetrievalService _retrievalService;
-    private readonly IIngestionPipeline _ingestionPipeline;
+    private readonly ISearchQueryService _searchQueryService;
+    private readonly IDocumentReindexService _documentReindexService;
     private readonly IPromptTemplateRegistry _promptTemplateRegistry;
     private readonly InfraCfg.FeatureFlagOptions _featureFlags;
     private readonly IFileSearchTool _fileSearchTool;
@@ -30,7 +31,8 @@ public sealed class McpServer : IMcpServer
 
     public McpServer(
         IRetrievalService retrievalService,
-        IIngestionPipeline ingestionPipeline,
+        ISearchQueryService searchQueryService,
+        IDocumentReindexService documentReindexService,
         IPromptTemplateRegistry promptTemplateRegistry,
         IFileSearchTool fileSearchTool,
         IWebSearchTool webSearchTool,
@@ -46,7 +48,8 @@ public sealed class McpServer : IMcpServer
         IOptions<AppCfg.CodeInterpreterOptions> codeInterpreterOptions)
     {
         _retrievalService = retrievalService;
-        _ingestionPipeline = ingestionPipeline;
+        _searchQueryService = searchQueryService;
+        _documentReindexService = documentReindexService;
         _promptTemplateRegistry = promptTemplateRegistry;
         _featureFlags = featureFlags.Value;
         _fileSearchTool = fileSearchTool;
@@ -233,7 +236,7 @@ public sealed class McpServer : IMcpServer
             ? parsedTop
             : 5;
 
-        var result = await _retrievalService.QueryAsync(new SearchQueryRequestDto
+        var result = await _searchQueryService.QueryAsync(new SearchQueryRequestDto
         {
             Query = query,
             Top = top
@@ -327,7 +330,7 @@ public sealed class McpServer : IMcpServer
             ? includeAllProperty.GetBoolean()
             : documentIds.Count == 0;
 
-        var result = await _ingestionPipeline.ReindexAsync(new BulkReindexRequestDto
+        var result = await _documentReindexService.ReindexAsync(new BulkReindexRequestDto
         {
             DocumentIds = documentIds,
             IncludeAllTenantDocuments = includeAllTenantDocuments,

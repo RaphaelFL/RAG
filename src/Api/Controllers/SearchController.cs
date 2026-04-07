@@ -16,11 +16,13 @@ namespace Chatbot.Api.Controllers;
 public class SearchController : ControllerBase
 {
     private readonly IRetrievalService _retrievalService;
+    private readonly ISearchQueryService _searchQueryService;
     private readonly ILogger<SearchController> _logger;
 
-    public SearchController(IRetrievalService retrievalService, ILogger<SearchController> logger)
+    public SearchController(IRetrievalService retrievalService, ISearchQueryService searchQueryService, ILogger<SearchController> logger)
     {
         _retrievalService = retrievalService;
+        _searchQueryService = searchQueryService;
         _logger = logger;
     }
 
@@ -81,7 +83,7 @@ public class SearchController : ControllerBase
 
         try
         {
-            var result = await _retrievalService.QueryAsync(query, cancellationToken);
+            var result = await _searchQueryService.QueryAsync(query, cancellationToken);
             return Ok(result);
         }
         catch (InvalidOperationException ex)

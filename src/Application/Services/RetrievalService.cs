@@ -25,7 +25,7 @@ public class RetrievalService : IRetrievalService
     private readonly IApplicationCache _applicationCache;
     private readonly IFeatureFlagService _featureFlagService;
     private readonly IRagRuntimeSettings _ragRuntimeSettings;
-    private readonly IOperationalAuditStore _operationalAuditStore;
+    private readonly IOperationalAuditWriter _operationalAuditWriter;
     private readonly ILogger<RetrievalService> _logger;
 
     public RetrievalService(
@@ -37,7 +37,7 @@ public class RetrievalService : IRetrievalService
         IApplicationCache applicationCache,
         IFeatureFlagService featureFlagService,
         IRagRuntimeSettings ragRuntimeSettings,
-        IOperationalAuditStore operationalAuditStore,
+        IOperationalAuditWriter operationalAuditWriter,
         ILogger<RetrievalService> logger)
     {
         _indexGateway = indexGateway;
@@ -48,7 +48,7 @@ public class RetrievalService : IRetrievalService
         _applicationCache = applicationCache;
         _featureFlagService = featureFlagService;
         _ragRuntimeSettings = ragRuntimeSettings;
-        _operationalAuditStore = operationalAuditStore;
+        _operationalAuditWriter = operationalAuditWriter;
         _logger = logger;
     }
 
@@ -166,7 +166,7 @@ public class RetrievalService : IRetrievalService
         Dictionary<string, object?> diagnostics,
         CancellationToken ct)
     {
-        return _operationalAuditStore.WriteRetrievalLogAsync(new RetrievalLogRecord
+        return _operationalAuditWriter.WriteRetrievalLogAsync(new RetrievalLogRecord
         {
             RetrievalLogId = Guid.NewGuid(),
             TenantId = _requestContextAccessor.TenantId ?? Guid.Empty,
@@ -178,34 +178,6 @@ public class RetrievalService : IRetrievalService
             DiagnosticsJson = JsonSerializer.Serialize(diagnostics, SerializerOptions),
             CreatedAtUtc = DateTime.UtcNow
         }, ct);
-    }
-
-    public async Task<SearchQueryResponseDto> QueryAsync(SearchQueryRequestDto query, CancellationToken ct)
-    {
-        var retrievalResult = await RetrieveAsync(new RetrievalQueryDto
-        {
-            Query = query.Query,
-            TopK = query.Top,
-            DocumentIds = query.Filters?.DocumentIds,
-            Tags = query.Filters?.Tags,
-            Categories = query.Filters?.Categories,
-            ContentTypes = query.Filters?.ContentTypes,
-            Sources = query.Filters?.Sources,
-            SemanticRanking = query.SemanticRanking
-        }, ct);
-
-        return new SearchQueryResponseDto
-        {
-            Items = retrievalResult.Chunks.Select(chunk => new SearchQueryItemDto
-            {
-                DocumentId = chunk.DocumentId,
-                ChunkId = chunk.ChunkId,
-                Title = chunk.DocumentTitle,
-                Snippet = chunk.Content[..Math.Min(200, chunk.Content.Length)],
-                Score = chunk.Score
-            }).ToList(),
-            Count = retrievalResult.Chunks.Count
-        };
     }
 
     private string BuildRetrievalCacheKey(

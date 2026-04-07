@@ -43,59 +43,6 @@ public class RetrievalServiceTests
     }
 
     [Fact]
-    public async Task QueryAsync_ShouldMapRetrievedChunks_ToSearchItems()
-    {
-        var gateway = new CapturingSearchIndexGateway
-        {
-            Results = new List<SearchResultDto>
-            {
-                new()
-                {
-                    ChunkId = "chunk-001",
-                    DocumentId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
-                    Content = "Conteudo relevante sobre reembolso.",
-                    Score = 0.91,
-                    Metadata = new Dictionary<string, string>
-                    {
-                        ["title"] = "Politica Financeira"
-                    }
-                }
-            }
-        };
-
-        var catalog = new InMemoryDocumentCatalogStub();
-        catalog.Upsert(new DocumentCatalogEntry
-        {
-            DocumentId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
-            TenantId = Guid.Empty,
-            Title = "Politica Financeira"
-        });
-
-        var sut = new RetrievalService(
-            gateway,
-            new StaticEmbeddingProvider(),
-            catalog,
-            new AllowAllDocumentAuthorizationService(),
-            new TestRequestContextAccessor(),
-            new InMemoryApplicationCache(),
-            new StaticFeatureFlagService(),
-            new StaticRagRuntimeSettings(),
-            new NoOpOperationalAuditStore(),
-            NullLogger<RetrievalService>.Instance);
-
-        var result = await sut.QueryAsync(new SearchQueryRequestDto
-        {
-            Query = "reembolso",
-            Top = 3
-        }, CancellationToken.None);
-
-        result.Count.Should().Be(1);
-        result.Items.Should().ContainSingle();
-        result.Items[0].Title.Should().Be("Politica Financeira");
-        result.Items[0].ChunkId.Should().Be("chunk-001");
-    }
-
-    [Fact]
     public async Task RetrieveAsync_ShouldReportHybridStrategy_WhenSemanticRankingFlagIsDisabled()
     {
         var documentId = Guid.Parse("33333333-3333-3333-3333-333333333333");

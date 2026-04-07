@@ -56,7 +56,8 @@ public class InfrastructureRegistrationTests
         provider.GetService<IOcrProvider>().Should().NotBeNull();
         provider.GetService<ISearchIndexGateway>().Should().NotBeNull();
         provider.GetService<IApplicationCache>().Should().NotBeNull();
-        provider.GetService<IOperationalAuditStore>().Should().BeOfType<FileSystemOperationalAuditStore>();
+        provider.GetService<IOperationalAuditWriter>().Should().BeOfType<FileSystemOperationalAuditStore>();
+        provider.GetService<IOperationalAuditReader>().Should().BeOfType<FileSystemOperationalAuditStore>();
 
         var options = provider.GetRequiredService<IOptions<ExternalProviderClientOptions>>().Value;
         options.TimeoutSeconds.Should().Be(12);
@@ -172,7 +173,8 @@ public class InfrastructureRegistrationTests
 
         provider.GetRequiredService<ISearchIndexGateway>().Should().BeOfType<RedisStackSearchIndexGateway>();
         provider.GetRequiredService<IChatSessionStore>().Should().BeOfType<RedisChatSessionStore>();
-        provider.GetRequiredService<IOperationalAuditStore>().Should().BeOfType<FileSystemOperationalAuditStore>();
+        provider.GetRequiredService<IOperationalAuditWriter>().Should().BeOfType<FileSystemOperationalAuditStore>();
+        provider.GetRequiredService<IOperationalAuditReader>().Should().BeOfType<FileSystemOperationalAuditStore>();
     }
 
     private static void AddRuntimePrerequisites(IServiceCollection services)

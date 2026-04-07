@@ -26,7 +26,4 @@ internal sealed class CountingRetrievalService : IRetrievalService
         CallCount++;
         return Task.FromResult(_result);
     }
-
-    public Task<SearchQueryResponseDto> QueryAsync(SearchQueryRequestDto query, CancellationToken ct) =>
-        Task.FromResult(new SearchQueryResponseDto());
 }

@@ -15,7 +15,7 @@ public sealed class GovernedAgentRuntime : IAgentRuntime
     private readonly ICodeInterpreter _codeInterpreter;
     private readonly IPromptAssembler _promptAssembler;
     private readonly AgentRuntimeOptions _options;
-    private readonly IOperationalAuditStore _operationalAuditStore;
+    private readonly IOperationalAuditWriter _operationalAuditWriter;
 
     public GovernedAgentRuntime(
         IFileSearchTool fileSearchTool,
@@ -23,14 +23,14 @@ public sealed class GovernedAgentRuntime : IAgentRuntime
         ICodeInterpreter codeInterpreter,
         IPromptAssembler promptAssembler,
         IOptions<AgentRuntimeOptions> options,
-        IOperationalAuditStore operationalAuditStore)
+        IOperationalAuditWriter operationalAuditWriter)
     {
         _fileSearchTool = fileSearchTool;
         _webSearchTool = webSearchTool;
         _codeInterpreter = codeInterpreter;
         _promptAssembler = promptAssembler;
         _options = options.Value;
-        _operationalAuditStore = operationalAuditStore;
+        _operationalAuditWriter = operationalAuditWriter;
     }
 
     public async Task<AgentRunResult> RunAsync(AgentRunRequest request, CancellationToken ct)
@@ -67,7 +67,7 @@ public sealed class GovernedAgentRuntime : IAgentRuntime
                 };
                 usedTools++;
                 var matches = await _fileSearchTool.SearchAsync(toolRequest, ct);
-                await _operationalAuditStore.WriteToolExecutionAsync(new ToolExecutionRecord
+                await _operationalAuditWriter.WriteToolExecutionAsync(new ToolExecutionRecord
                 {
                     ToolExecutionId = Guid.NewGuid(),
                     AgentRunId = agentRunId,
@@ -87,7 +87,7 @@ public sealed class GovernedAgentRuntime : IAgentRuntime
                 var toolRequest = new WebSearchRequest { TenantId = request.TenantId, Query = query, TopK = 5 };
                 usedTools++;
                 var hits = await _webSearchTool.SearchAsync(toolRequest, ct);
-                await _operationalAuditStore.WriteToolExecutionAsync(new ToolExecutionRecord
+                await _operationalAuditWriter.WriteToolExecutionAsync(new ToolExecutionRecord
                 {
                     ToolExecutionId = Guid.NewGuid(),
                     AgentRunId = agentRunId,
@@ -107,7 +107,7 @@ public sealed class GovernedAgentRuntime : IAgentRuntime
                 var toolRequest = new CodeInterpreterRequest { TenantId = request.TenantId, Code = code };
                 usedTools++;
                 var execution = await _codeInterpreter.ExecuteAsync(toolRequest, ct);
-                await _operationalAuditStore.WriteToolExecutionAsync(new ToolExecutionRecord
+                await _operationalAuditWriter.WriteToolExecutionAsync(new ToolExecutionRecord
                 {
                     ToolExecutionId = Guid.NewGuid(),
                     AgentRunId = agentRunId,
@@ -136,7 +136,7 @@ public sealed class GovernedAgentRuntime : IAgentRuntime
                 };
                 usedTools++;
                 var prompt = await _promptAssembler.AssembleAsync(toolRequest, ct);
-                await _operationalAuditStore.WriteToolExecutionAsync(new ToolExecutionRecord
+                await _operationalAuditWriter.WriteToolExecutionAsync(new ToolExecutionRecord
                 {
                     ToolExecutionId = Guid.NewGuid(),
                     AgentRunId = agentRunId,
@@ -168,7 +168,7 @@ public sealed class GovernedAgentRuntime : IAgentRuntime
 
     private Task WriteAgentRunAsync(AgentRunRequest request, AgentRunResult result, int toolBudget, int usedTools, DateTime startedAtUtc, CancellationToken ct)
     {
-        return _operationalAuditStore.WriteAgentRunAsync(new AgentRunRecord
+        return _operationalAuditWriter.WriteAgentRunAsync(new AgentRunRecord
         {
             AgentRunId = result.AgentRunId,
             TenantId = request.TenantId,
