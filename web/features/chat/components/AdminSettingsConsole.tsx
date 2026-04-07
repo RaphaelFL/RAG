@@ -165,6 +165,9 @@ export default function AdminSettingsConsole() {
           <a className="button ghost" href="/">
             Voltar ao console
           </a>
+          <a className="button secondary" href="/inspecao-documental">
+            Inspecao documental
+          </a>
         </div>
       </section>
 

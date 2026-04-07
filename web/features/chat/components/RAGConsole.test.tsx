@@ -79,6 +79,7 @@ describe('RAGConsole', () => {
     expect(screen.getByText('Upload indisponivel')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Confirmar envio' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Nova sessao' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Inspecao documental' })).toHaveAttribute('href', '/inspecao-documental');
     expect(screen.getByRole('link', { name: 'Configuracoes de administrador' })).toHaveAttribute('href', '/configuracoes-de-administrador');
     expect(screen.queryByText(/sessao vinculada:/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Session Id ativo')).not.toBeInTheDocument();

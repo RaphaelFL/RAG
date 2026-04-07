@@ -75,6 +75,46 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
         }
     }
 
+    public async Task<List<DocumentChunkIndexDto>> GetDocumentChunksAsync(Guid documentId, CancellationToken ct)
+    {
+        var database = await GetDatabaseAsync(ct);
+        if (database is null)
+        {
+            return await _fallbackGateway.GetDocumentChunksAsync(documentId, ct);
+        }
+
+        try
+        {
+            await EnsureIndexAsync(database, ct);
+            var filter = $"@documentId:{{{EscapeTag(documentId.ToString())}}}";
+            var response = await database.ExecuteAsync("FT.SEARCH", _vectorOptions.IndexName, filter, "NOCONTENT", "LIMIT", 0, 10000);
+            var documentKeys = ParseDocumentKeys(response);
+
+            if (documentKeys.Count == 0)
+            {
+                return await _fallbackGateway.GetDocumentChunksAsync(documentId, ct);
+            }
+
+            var readTasks = documentKeys.Select(key => database.HashGetAllAsync(key)).ToArray();
+            var hashes = await Task.WhenAll(readTasks);
+
+            var chunks = hashes
+                .Select(ToChunk)
+                .Where(chunk => chunk is not null)
+                .Cast<DocumentChunkIndexDto>()
+                .OrderBy(chunk => ParseChunkIndex(chunk.Metadata))
+                .ThenBy(chunk => chunk.ChunkId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return chunks;
+        }
+        catch (Exception ex)
+        {
+            MarkUnavailable(ex);
+            return await _fallbackGateway.GetDocumentChunksAsync(documentId, ct);
+        }
+    }
+
     public async Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
     {
         var database = await GetDatabaseAsync(ct);
@@ -648,6 +688,67 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
     private static string ReadField(Dictionary<string, string> fields, string key, string fallback = "")
     {
         return fields.TryGetValue(key, out var value) ? value ?? fallback : fallback;
+    }
+
+    private static DocumentChunkIndexDto? ToChunk(HashEntry[] entries)
+    {
+        if (entries.Length == 0)
+        {
+            return null;
+        }
+
+        var fields = entries.ToDictionary(entry => entry.Name.ToString(), entry => entry.Value, StringComparer.OrdinalIgnoreCase);
+        if (!Guid.TryParse(fields.TryGetValue("documentId", out var rawDocumentId) ? rawDocumentId.ToString() : null, out var documentId))
+        {
+            return null;
+        }
+
+        var metadata = fields.TryGetValue("metadata", out var rawMetadata)
+            ? JsonSerializer.Deserialize<Dictionary<string, string>>(rawMetadata.ToString(), SerializerOptions)
+                ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var pageNumber = fields.TryGetValue("pageNumber", out var rawPageNumber) && int.TryParse(rawPageNumber.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPageNumber)
+            ? parsedPageNumber
+            : 0;
+
+        var embedding = fields.TryGetValue("vector", out var rawVector) && !rawVector.IsNull
+            ? DecodeVector((byte[])rawVector!)
+            : null;
+
+        return new DocumentChunkIndexDto
+        {
+            ChunkId = fields.TryGetValue("chunkId", out var rawChunkId) ? rawChunkId.ToString() : string.Empty,
+            DocumentId = documentId,
+            Content = fields.TryGetValue("content", out var rawContent) ? rawContent.ToString() : string.Empty,
+            Embedding = embedding,
+            PageNumber = pageNumber,
+            Section = fields.TryGetValue("sectionTitle", out var rawSection) ? rawSection.ToString() : null,
+            Metadata = metadata
+        };
+    }
+
+    private static float[]? DecodeVector(byte[] payload)
+    {
+        if (payload.Length == 0 || payload.Length % sizeof(float) != 0)
+        {
+            return null;
+        }
+
+        var vector = new float[payload.Length / sizeof(float)];
+        for (var index = 0; index < vector.Length; index++)
+        {
+            vector[index] = BinaryPrimitives.ReadSingleLittleEndian(payload.AsSpan(index * sizeof(float), sizeof(float)));
+        }
+
+        return vector;
+    }
+
+    private static int ParseChunkIndex(Dictionary<string, string> metadata)
+    {
+        return metadata.TryGetValue("chunkIndex", out var rawChunkIndex) && int.TryParse(rawChunkIndex, NumberStyles.Integer, CultureInfo.InvariantCulture, out var chunkIndex)
+            ? chunkIndex
+            : 0;
     }
 
     private sealed class SearchResultAccumulator

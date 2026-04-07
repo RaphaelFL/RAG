@@ -98,6 +98,9 @@ export function RAGConsole() {
           <button className="button ghost" onClick={handleNewSession} type="button">
             Nova sessao
           </button>
+          <a className="button secondary" href="/inspecao-documental">
+            Inspecao documental
+          </a>
           <a className="button secondary" href="/configuracoes-de-administrador">
             Configuracoes de administrador
           </a>

@@ -1,5 +1,3 @@
-using System.Security.Claims;
-
 namespace Chatbot.Mcp;
 
 public sealed class JsonRpcRequest
@@ -23,9 +21,4 @@ public sealed class JsonRpcError
     public int Code { get; set; }
     public string Message { get; set; } = string.Empty;
     public object? Data { get; set; }
-}
-
-public interface IMcpServer
-{
-    Task<JsonRpcResponse> HandleAsync(JsonRpcRequest request, ClaimsPrincipal user, CancellationToken cancellationToken);
 }

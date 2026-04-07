@@ -29,7 +29,7 @@ public sealed class FileSystemDocumentCatalog : IDocumentCatalog
     {
         lock (_sync)
         {
-            _documents[entry.DocumentId] = Clone(entry);
+            _documents[entry.DocumentId] = SanitizeForStorage(entry);
             Persist();
         }
     }
@@ -149,6 +149,7 @@ public sealed class FileSystemDocumentCatalog : IDocumentCatalog
             LastJobId = source.LastJobId,
             CreatedAtUtc = source.CreatedAtUtc,
             UpdatedAtUtc = source.UpdatedAtUtc,
+            IndexedChunkCount = source.IndexedChunkCount,
             Chunks = source.Chunks.Select(chunk => new DocumentChunkIndexDto
             {
                 ChunkId = chunk.ChunkId,
@@ -160,6 +161,16 @@ public sealed class FileSystemDocumentCatalog : IDocumentCatalog
                 Metadata = new Dictionary<string, string>(chunk.Metadata)
             }).ToList()
         };
+    }
+
+    private static DocumentCatalogEntry SanitizeForStorage(DocumentCatalogEntry source)
+    {
+        var sanitized = Clone(source);
+        sanitized.IndexedChunkCount = sanitized.IndexedChunkCount > 0
+            ? sanitized.IndexedChunkCount
+            : sanitized.Chunks.Count;
+        sanitized.Chunks = new List<DocumentChunkIndexDto>();
+        return sanitized;
     }
 
     private static string ResolveBasePath(string configuredPath, string contentRootPath)

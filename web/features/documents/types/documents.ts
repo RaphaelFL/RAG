@@ -34,6 +34,7 @@ export type DocumentDetails = {
   title: string;
   status: DocumentStatus;
   version: number;
+  indexedChunkCount?: number;
   contentType: string;
   source?: string | null;
   lastJobId?: string | null;
@@ -46,6 +47,42 @@ export type DocumentDetails = {
     externalId?: string | null;
     accessPolicy?: string | null;
   };
+};
+
+export type DocumentEmbeddingInspection = {
+  exists: boolean;
+  dimensions: number;
+  preview: number[];
+};
+
+export type DocumentChunkEmbedding = {
+  documentId: string;
+  chunkId: string;
+  dimensions: number;
+  values: number[];
+};
+
+export type DocumentChunkInspection = {
+  chunkId: string;
+  chunkIndex: number;
+  content: string;
+  characterCount: number;
+  pageNumber: number;
+  endPageNumber?: number | null;
+  section?: string | null;
+  metadata: Record<string, string>;
+  embedding: DocumentEmbeddingInspection;
+};
+
+export type DocumentInspection = {
+  document: DocumentDetails;
+  embeddedChunkCount: number;
+  totalChunkCount: number;
+  filteredChunkCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  chunks: DocumentChunkInspection[];
 };
 
 export type DocumentUploadModel = {

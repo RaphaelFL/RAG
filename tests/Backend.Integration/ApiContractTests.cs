@@ -341,6 +341,125 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task DocumentsEndpoint_ShouldListAccessibleIndexedDocuments()
+    {
+        using var client = _factory.CreateClient();
+        AddHeaders(client, "51515151-5151-5151-5151-515151515151", role: "TenantAdmin");
+
+        var uploadResponse = await UploadTextFileAsync(client, "manual-lista.txt", "Manual corporativo com procedimentos e prazos operacionais.");
+        uploadResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        var uploadPayload = await uploadResponse.Content.ReadFromJsonAsync<UploadDocumentResponseDto>(JsonOptions);
+        uploadPayload.Should().NotBeNull();
+        await WaitForDocumentStatusAsync(client, uploadPayload!.DocumentId, "Indexed");
+
+        var response = await client.GetAsync("/api/v1/documents");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await response.Content.ReadFromJsonAsync<List<DocumentDetailsDto>>(JsonOptions);
+        payload.Should().NotBeNull();
+
+        var listed = payload!.Single(document => document.DocumentId == uploadPayload.DocumentId);
+        listed.Title.Should().NotBeNullOrWhiteSpace();
+        listed.IndexedChunkCount.Should().BeGreaterThan(0);
+        listed.Status.Should().Be("Indexed");
+    }
+
+    [Fact]
+    public async Task DocumentInspectionEndpoint_ShouldReturnRealChunksAndEmbeddingSummary()
+    {
+        using var client = _factory.CreateClient();
+        AddHeaders(client, "52525252-5252-5252-5252-525252525252", role: "TenantAdmin");
+
+        const string documentText = "Politica de reembolso corporativo. O prazo para envio do comprovante e de 5 dias uteis. Despesas acima de 500 reais exigem aprovacao previa.";
+        var uploadResponse = await UploadTextFileAsync(client, "manual-inspecao.txt", documentText);
+        uploadResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        var uploadPayload = await uploadResponse.Content.ReadFromJsonAsync<UploadDocumentResponseDto>(JsonOptions);
+        uploadPayload.Should().NotBeNull();
+        await WaitForDocumentStatusAsync(client, uploadPayload!.DocumentId, "Indexed");
+
+        var response = await client.GetAsync($"/api/v1/documents/{uploadPayload.DocumentId}/inspection");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await response.Content.ReadFromJsonAsync<DocumentInspectionDto>(JsonOptions);
+        payload.Should().NotBeNull();
+        payload!.Document.DocumentId.Should().Be(uploadPayload.DocumentId);
+        payload.Chunks.Should().NotBeEmpty();
+        payload.EmbeddedChunkCount.Should().BeGreaterThan(0);
+        payload.TotalChunkCount.Should().BeGreaterThan(0);
+        payload.FilteredChunkCount.Should().Be(payload.Chunks.Count);
+        payload.PageNumber.Should().Be(1);
+        payload.TotalPages.Should().BeGreaterThanOrEqualTo(1);
+
+        var firstChunk = payload.Chunks[0];
+        firstChunk.Content.Should().Contain("prazo para envio do comprovante");
+        firstChunk.CharacterCount.Should().BeGreaterThan(20);
+        firstChunk.Embedding.Exists.Should().BeTrue();
+        firstChunk.Embedding.Dimensions.Should().BeGreaterThan(0);
+        firstChunk.Embedding.Preview.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task DocumentInspectionEndpoint_ShouldSupportSearchAndPagination()
+    {
+        using var client = _factory.CreateClient();
+        AddHeaders(client, "54545454-5454-5454-5454-545454545454", role: "TenantAdmin");
+
+        const string documentText = "Politica de reembolso corporativo. O prazo para envio do comprovante e de 5 dias uteis. Despesas acima de 500 reais exigem aprovacao previa. O reembolso e creditado apos a validacao do financeiro.";
+        var uploadResponse = await UploadTextFileAsync(client, "manual-inspecao-busca.txt", documentText);
+        uploadResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        var uploadPayload = await uploadResponse.Content.ReadFromJsonAsync<UploadDocumentResponseDto>(JsonOptions);
+        uploadPayload.Should().NotBeNull();
+        await WaitForDocumentStatusAsync(client, uploadPayload!.DocumentId, "Indexed");
+
+        var response = await client.GetAsync($"/api/v1/documents/{uploadPayload.DocumentId}/inspection?search=aprovacao&page=1&pageSize=1");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await response.Content.ReadFromJsonAsync<DocumentInspectionDto>(JsonOptions);
+        payload.Should().NotBeNull();
+        payload!.Document.DocumentId.Should().Be(uploadPayload.DocumentId);
+        payload.Chunks.Should().ContainSingle();
+        payload.TotalChunkCount.Should().BeGreaterThanOrEqualTo(payload.FilteredChunkCount);
+        payload.FilteredChunkCount.Should().BeGreaterThan(0);
+        payload.PageNumber.Should().Be(1);
+        payload.PageSize.Should().Be(1);
+        payload.TotalPages.Should().BeGreaterThanOrEqualTo(1);
+        payload.Chunks.Single().Content.Should().ContainEquivalentOf("aprovacao");
+    }
+
+    [Fact]
+    public async Task ChunkEmbeddingEndpoint_ShouldReturnFullVectorOnDemand()
+    {
+        using var client = _factory.CreateClient();
+        AddHeaders(client, "53535353-5353-5353-5353-535353535353", role: "TenantAdmin");
+
+        var uploadResponse = await UploadTextFileAsync(client, "manual-vetor.txt", "Procedimento corporativo com aprovacao, comprovante e prazo maximo de cinco dias uteis.");
+        uploadResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        var uploadPayload = await uploadResponse.Content.ReadFromJsonAsync<UploadDocumentResponseDto>(JsonOptions);
+        uploadPayload.Should().NotBeNull();
+        await WaitForDocumentStatusAsync(client, uploadPayload!.DocumentId, "Indexed");
+
+        var inspectionResponse = await client.GetAsync($"/api/v1/documents/{uploadPayload.DocumentId}/inspection");
+        inspectionResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var inspectionPayload = await inspectionResponse.Content.ReadFromJsonAsync<DocumentInspectionDto>(JsonOptions);
+        inspectionPayload.Should().NotBeNull();
+        var firstChunk = inspectionPayload!.Chunks.First();
+
+        var response = await client.GetAsync($"/api/v1/documents/{uploadPayload.DocumentId}/chunks/{firstChunk.ChunkId}/embedding");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await response.Content.ReadFromJsonAsync<DocumentChunkEmbeddingDto>(JsonOptions);
+        payload.Should().NotBeNull();
+        payload!.DocumentId.Should().Be(uploadPayload.DocumentId);
+        payload.ChunkId.Should().Be(firstChunk.ChunkId);
+        payload.Dimensions.Should().BeGreaterThan(0);
+        payload.Values.Should().HaveCount(payload.Dimensions);
+    }
+
+    [Fact]
     public async Task ReindexEndpoint_ShouldQueueJob_AndEventuallyRestoreIndexedStatus()
     {
         using var client = _factory.CreateClient();

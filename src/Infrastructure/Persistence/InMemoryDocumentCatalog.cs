@@ -9,13 +9,13 @@ public sealed class InMemoryDocumentCatalog : IDocumentCatalog
 
     public void Upsert(DocumentCatalogEntry entry)
     {
-        Documents[entry.DocumentId] = entry;
+        Documents[entry.DocumentId] = Clone(entry);
     }
 
     public DocumentCatalogEntry? Get(Guid documentId)
     {
         Documents.TryGetValue(documentId, out var entry);
-        return entry;
+        return entry is null ? null : Clone(entry);
     }
 
     public IReadOnlyCollection<DocumentCatalogEntry> Query(FileSearchFilterDto? filters)
@@ -54,7 +54,7 @@ public sealed class InMemoryDocumentCatalog : IDocumentCatalog
             query = query.Where(document => filters.Sources.Any(source => string.Equals(source, document.Source, StringComparison.OrdinalIgnoreCase)));
         }
 
-        return query.ToList();
+        return query.Select(Clone).ToList();
     }
 
     public DocumentCatalogEntry? FindByContentHash(Guid tenantId, string contentHash)
@@ -63,5 +63,42 @@ public sealed class InMemoryDocumentCatalog : IDocumentCatalog
             document.TenantId == tenantId &&
             string.Equals(document.ContentHash, contentHash, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(document.Status, "Deleted", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static DocumentCatalogEntry Clone(DocumentCatalogEntry source)
+    {
+        return new DocumentCatalogEntry
+        {
+            DocumentId = source.DocumentId,
+            TenantId = source.TenantId,
+            Title = source.Title,
+            OriginalFileName = source.OriginalFileName,
+            ContentType = source.ContentType,
+            Status = source.Status,
+            Version = source.Version,
+            Source = source.Source,
+            ContentHash = source.ContentHash,
+            Category = source.Category,
+            Tags = new List<string>(source.Tags),
+            Categories = new List<string>(source.Categories),
+            ExternalId = source.ExternalId,
+            AccessPolicy = source.AccessPolicy,
+            StoragePath = source.StoragePath,
+            QuarantinePath = source.QuarantinePath,
+            LastJobId = source.LastJobId,
+            CreatedAtUtc = source.CreatedAtUtc,
+            UpdatedAtUtc = source.UpdatedAtUtc,
+            IndexedChunkCount = source.IndexedChunkCount,
+            Chunks = source.Chunks.Select(chunk => new DocumentChunkIndexDto
+            {
+                ChunkId = chunk.ChunkId,
+                DocumentId = chunk.DocumentId,
+                Content = chunk.Content,
+                Embedding = chunk.Embedding?.ToArray(),
+                PageNumber = chunk.PageNumber,
+                Section = chunk.Section,
+                Metadata = new Dictionary<string, string>(chunk.Metadata)
+            }).ToList()
+        };
     }
 }

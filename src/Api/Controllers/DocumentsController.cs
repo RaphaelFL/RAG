@@ -283,6 +283,18 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
+    /// Listar os documentos acessiveis para o contexto autenticado.
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<DocumentDetailsDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<IReadOnlyList<DocumentDetailsDto>>> ListDocuments(CancellationToken cancellationToken)
+    {
+        var documents = await _ingestionPipeline.ListDocumentsAsync(cancellationToken);
+        return Ok(documents);
+    }
+
+    /// <summary>
     /// Consultar o estado operacional e metadados de um documento.
     /// </summary>
     [HttpGet("{documentId}")]
@@ -308,6 +320,86 @@ public class DocumentsController : ControllerBase
             }
 
             return Ok(document);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponseDto
+            {
+                Code = "access_denied",
+                Message = ex.Message,
+                TraceId = HttpContext.TraceIdentifier
+            });
+        }
+    }
+
+    /// <summary>
+    /// Consultar os chunks persistidos e o resumo dos embeddings de um documento.
+    /// </summary>
+    [HttpGet("{documentId}/inspection")]
+    [ProducesResponseType(typeof(DocumentInspectionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DocumentInspectionDto>> GetDocumentInspection(
+        [FromRoute] Guid documentId,
+        CancellationToken cancellationToken,
+        [FromQuery] string? search = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10)
+    {
+        try
+        {
+            var inspection = await _ingestionPipeline.GetDocumentInspectionAsync(documentId, search, page, pageSize, cancellationToken);
+            if (inspection is null)
+            {
+                return NotFound(new ErrorResponseDto
+                {
+                    Code = "document_not_found",
+                    Message = $"Document {documentId} not found",
+                    TraceId = HttpContext.TraceIdentifier
+                });
+            }
+
+            return Ok(inspection);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponseDto
+            {
+                Code = "access_denied",
+                Message = ex.Message,
+                TraceId = HttpContext.TraceIdentifier
+            });
+        }
+    }
+
+    /// <summary>
+    /// Consultar o vetor completo de embedding de um chunk especifico sob demanda.
+    /// </summary>
+    [HttpGet("{documentId}/chunks/{chunkId}/embedding")]
+    [ProducesResponseType(typeof(DocumentChunkEmbeddingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DocumentChunkEmbeddingDto>> GetDocumentChunkEmbedding(
+        [FromRoute] Guid documentId,
+        [FromRoute] string chunkId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var embedding = await _ingestionPipeline.GetDocumentChunkEmbeddingAsync(documentId, chunkId, cancellationToken);
+            if (embedding is null)
+            {
+                return NotFound(new ErrorResponseDto
+                {
+                    Code = "chunk_embedding_not_found",
+                    Message = $"Embedding for chunk {chunkId} was not found",
+                    TraceId = HttpContext.TraceIdentifier
+                });
+            }
+
+            return Ok(embedding);
         }
         catch (UnauthorizedAccessException ex)
         {

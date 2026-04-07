@@ -510,6 +510,201 @@ textarea {
   margin-bottom: 18px;
 }
 
+.document-inspector-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.document-browser-panel,
+.document-inspection-panel {
+  min-height: 72vh;
+}
+
+.document-list-shell,
+.document-detail-shell {
+  min-height: 72vh;
+}
+
+.document-browser-list,
+.chunk-list {
+  display: grid;
+  gap: 12px;
+}
+
+.document-browser-list-wide {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.document-browser-entry {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(55, 44, 28, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 16px;
+}
+
+.document-browser-entry.is-active {
+  border-color: rgba(13, 148, 136, 0.4);
+  box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.08);
+}
+
+.document-browser-entry-link {
+  position: relative;
+}
+
+.document-browser-link-hint {
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.document-browser-entry-header,
+.inspection-document-header,
+.chunk-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.document-browser-entry strong,
+.inspection-document-header h3,
+.chunk-card strong {
+  font-family: var(--font-display);
+}
+
+.document-browser-entry p,
+.inspection-document-header p,
+.chunk-card-header p,
+.embedding-preview-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.document-browser-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.inspection-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.chunk-toolbar,
+.pagination-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+.chunk-toolbar label {
+  margin-bottom: 0;
+  flex: 1 1 280px;
+}
+
+.inspection-summary-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(55, 44, 28, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.66);
+  padding: 16px;
+}
+
+.inspection-summary-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.inspection-summary-card strong {
+  font-family: var(--font-display);
+  font-size: 1.12rem;
+}
+
+.chunk-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(55, 44, 28, 0.08);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.76);
+  padding: 18px;
+}
+
+.chunk-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 16px;
+  background: rgba(32, 26, 18, 0.05);
+  padding: 16px;
+  color: var(--text);
+  font-family: var(--font-body);
+  line-height: 1.65;
+}
+
+.chunk-highlight {
+  background: rgba(245, 158, 11, 0.26);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 4px;
+}
+
+.embedding-preview-card {
+  display: grid;
+  gap: 6px;
+  border-radius: 16px;
+  background: rgba(13, 148, 136, 0.08);
+  padding: 14px;
+}
+
+.embedding-vector-panel {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  border-radius: 14px;
+  background: rgba(32, 26, 18, 0.08);
+  padding: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chunk-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.chunk-metadata-item {
+  display: grid;
+  gap: 4px;
+  border-radius: 14px;
+  background: rgba(44, 35, 22, 0.06);
+  padding: 12px;
+}
+
+.chunk-metadata-item span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.chunk-metadata-item strong {
+  font-size: 0.92rem;
+}
+
 .analysis-banner {
   display: grid;
   gap: 8px;
@@ -572,6 +767,14 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .document-inspector-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inspection-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .console-sidebar {
     order: 2;
   }
@@ -590,12 +793,25 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .inspection-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .document-browser-list-wide {
+    grid-template-columns: 1fr;
+  }
+
   .panel {
     border-radius: 18px;
     padding: 16px;
   }
 
   .panel-header,
+  .chunk-toolbar,
+  .pagination-bar,
+  .document-browser-entry-header,
+  .inspection-document-header,
+  .chunk-card-header,
   .button-row,
   .toggle-row {
     flex-direction: column;

@@ -1,7 +1,7 @@
 import { ApiError, apiRequest } from '@/lib/http';
 import { buildProxyUrl } from '@/lib/runtimeEnvironment';
 import type { RuntimeEnvironment } from '@/types/app';
-import type { BulkReindexResponse, DocumentDetails, DocumentMetadataSuggestion, DocumentStatus, UploadDocumentResponse } from '@/features/documents/types/documents';
+import type { BulkReindexResponse, DocumentChunkEmbedding, DocumentDetails, DocumentInspection, DocumentMetadataSuggestion, DocumentStatus, UploadDocumentResponse } from '@/features/documents/types/documents';
 
 export async function suggestDocumentMetadata(
   env: RuntimeEnvironment,
@@ -82,6 +82,57 @@ export async function uploadDocument(
 
 export async function getDocument(env: RuntimeEnvironment, documentId: string) {
   return apiRequest<DocumentDetails>(env, `/api/v1/documents/${documentId}`, {
+    method: 'GET'
+  });
+}
+
+export async function listDocuments(env: RuntimeEnvironment) {
+  return apiRequest<DocumentDetails[]>(env, '/api/v1/documents', {
+    method: 'GET'
+  });
+}
+
+export async function getDocumentInspection(env: RuntimeEnvironment, documentId: string) {
+  return apiRequest<DocumentInspection>(env, `/api/v1/documents/${documentId}/inspection`, {
+    method: 'GET'
+  });
+}
+
+export async function getDocumentInspectionPage(
+  env: RuntimeEnvironment,
+  documentId: string,
+  input: {
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }
+) {
+  const searchParams = new URLSearchParams();
+
+  if (input.search?.trim()) {
+    searchParams.set('search', input.search.trim());
+  }
+
+  if (input.page) {
+    searchParams.set('page', String(input.page));
+  }
+
+  if (input.pageSize) {
+    searchParams.set('pageSize', String(input.pageSize));
+  }
+
+  const query = searchParams.toString();
+  const path = query
+    ? `/api/v1/documents/${documentId}/inspection?${query}`
+    : `/api/v1/documents/${documentId}/inspection`;
+
+  return apiRequest<DocumentInspection>(env, path, {
+    method: 'GET'
+  });
+}
+
+export async function getDocumentChunkEmbedding(env: RuntimeEnvironment, documentId: string, chunkId: string) {
+  return apiRequest<DocumentChunkEmbedding>(env, `/api/v1/documents/${documentId}/chunks/${encodeURIComponent(chunkId)}/embedding`, {
     method: 'GET'
   });
 }

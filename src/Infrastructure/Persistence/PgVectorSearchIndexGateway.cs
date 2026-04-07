@@ -1,5 +1,6 @@
 using System.Data;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Chatbot.Application.Abstractions;
 using Chatbot.Application.Configuration;
@@ -152,6 +153,67 @@ DO UPDATE SET
         {
             MarkUnavailable(ex);
             await _fallbackGateway.IndexDocumentChunksAsync(chunks, ct);
+        }
+    }
+
+    public async Task<List<DocumentChunkIndexDto>> GetDocumentChunksAsync(Guid documentId, CancellationToken ct)
+    {
+        var dataSource = await GetDataSourceAsync(ct);
+        if (dataSource is null)
+        {
+            return await _fallbackGateway.GetDocumentChunksAsync(documentId, ct);
+        }
+
+        try
+        {
+            await using var connection = await dataSource.OpenConnectionAsync(ct);
+            await using var command = connection.CreateCommand();
+            command.CommandText = $@"
+SELECT
+    chunk_id,
+    document_id,
+    content,
+    metadata,
+    section_title,
+    page_number,
+    chunk_index,
+    embedding::text AS embedding_text
+FROM {GetQualifiedTableName()}
+WHERE document_id = @document_id
+ORDER BY chunk_index ASC, chunk_id ASC;";
+            command.Parameters.AddWithValue("document_id", NpgsqlDbType.Uuid, documentId);
+
+            var chunks = new List<DocumentChunkIndexDto>();
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var metadataJson = reader.GetString(reader.GetOrdinal("metadata"));
+                var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(metadataJson, SerializerOptions)
+                    ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                chunks.Add(new DocumentChunkIndexDto
+                {
+                    ChunkId = reader.GetString(reader.GetOrdinal("chunk_id")),
+                    DocumentId = reader.GetGuid(reader.GetOrdinal("document_id")),
+                    Content = reader.GetString(reader.GetOrdinal("content")),
+                    Embedding = ParseVectorText(reader.GetString(reader.GetOrdinal("embedding_text"))),
+                    PageNumber = reader.GetInt32(reader.GetOrdinal("page_number")),
+                    Section = reader.GetString(reader.GetOrdinal("section_title")),
+                    Metadata = metadata
+                });
+            }
+
+            if (chunks.Count == 0)
+            {
+                return await _fallbackGateway.GetDocumentChunksAsync(documentId, ct);
+            }
+
+            return chunks;
+        }
+        catch (Exception ex)
+        {
+            MarkUnavailable(ex);
+            return await _fallbackGateway.GetDocumentChunksAsync(documentId, ct);
         }
     }
 
@@ -486,6 +548,30 @@ CREATE INDEX IF NOT EXISTS {QuoteIdentifier($"ix_{SanitizeIdentifier(_options.Sc
     private static string ReadMetadata(Dictionary<string, string> metadata, string key, string fallback = "")
     {
         return metadata.TryGetValue(key, out var value) ? value ?? fallback : fallback;
+    }
+
+    private static float[]? ParseVectorText(string rawVector)
+    {
+        if (string.IsNullOrWhiteSpace(rawVector))
+        {
+            return null;
+        }
+
+        var normalized = rawVector.Trim();
+        if (normalized.Length >= 2 && normalized[0] == '[' && normalized[^1] == ']')
+        {
+            normalized = normalized[1..^1];
+        }
+
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return Array.Empty<float>();
+        }
+
+        return normalized
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => float.Parse(value, CultureInfo.InvariantCulture))
+            .ToArray();
     }
 
     private static string QuoteIdentifier(string value)

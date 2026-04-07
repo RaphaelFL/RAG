@@ -473,6 +473,11 @@ public class RetrievalServiceTests
             return Task.CompletedTask;
         }
 
+        public Task<List<DocumentChunkIndexDto>> GetDocumentChunksAsync(Guid documentId, CancellationToken ct)
+        {
+            return Task.FromResult(new List<DocumentChunkIndexDto>());
+        }
+
         public Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
         {
             LastFilters = filters;

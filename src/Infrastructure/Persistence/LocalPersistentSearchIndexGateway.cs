@@ -42,6 +42,33 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
         return Task.CompletedTask;
     }
 
+    public Task<List<DocumentChunkIndexDto>> GetDocumentChunksAsync(Guid documentId, CancellationToken ct)
+    {
+        List<DocumentChunkIndexDto> chunks;
+        lock (_sync)
+        {
+            chunks = _index.Values
+                .Where(item => item.DocumentId == documentId)
+                .OrderBy(item => item.GetChunkIndex())
+                .ThenBy(item => item.ChunkId, StringComparer.OrdinalIgnoreCase)
+                .Select(item => item.ToDocumentChunk())
+                .ToList();
+        }
+
+        if (chunks.Count > 0)
+        {
+            return Task.FromResult(chunks);
+        }
+
+        var legacyDocument = _documentCatalog.Get(documentId);
+        var legacyChunks = legacyDocument?.Chunks
+            .Select(CloneChunk)
+            .ToList()
+            ?? new List<DocumentChunkIndexDto>();
+
+        return Task.FromResult(legacyChunks);
+    }
+
     public Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
     {
         List<IndexedChunk> candidateResults;
@@ -250,6 +277,20 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
             : Path.GetFullPath(Path.Combine(contentRootPath, configuredPath));
     }
 
+    private static DocumentChunkIndexDto CloneChunk(DocumentChunkIndexDto chunk)
+    {
+        return new DocumentChunkIndexDto
+        {
+            ChunkId = chunk.ChunkId,
+            DocumentId = chunk.DocumentId,
+            Content = chunk.Content,
+            Embedding = chunk.Embedding?.ToArray(),
+            PageNumber = chunk.PageNumber,
+            Section = chunk.Section,
+            Metadata = new Dictionary<string, string>(chunk.Metadata)
+        };
+    }
+
     private sealed class IndexedChunk
     {
         public string ChunkId { get; set; } = string.Empty;
@@ -258,6 +299,36 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
         public double Score { get; set; }
         public Dictionary<string, string> Metadata { get; set; } = new();
         public float[]? Embedding { get; set; }
+
+        public DocumentChunkIndexDto ToDocumentChunk()
+        {
+            return new DocumentChunkIndexDto
+            {
+                ChunkId = ChunkId,
+                DocumentId = DocumentId,
+                Content = Content,
+                Embedding = Embedding?.ToArray(),
+                PageNumber = GetPageNumber(),
+                Section = Metadata.TryGetValue("section", out var section) ? section : null,
+                Metadata = new Dictionary<string, string>(Metadata)
+            };
+        }
+
+        public int GetChunkIndex()
+        {
+            return Metadata.TryGetValue("chunkIndex", out var rawChunkIndex) && int.TryParse(rawChunkIndex, out var chunkIndex)
+                ? chunkIndex
+                : 0;
+        }
+
+        private int GetPageNumber()
+        {
+            return Metadata.TryGetValue("startPage", out var rawStartPage) && int.TryParse(rawStartPage, out var startPage)
+                ? startPage
+                : Metadata.TryGetValue("page", out var rawPage) && int.TryParse(rawPage, out var page)
+                ? page
+                : 0;
+        }
 
         public static IndexedChunk From(DocumentChunkIndexDto chunk, double score = 0.95)
         {
