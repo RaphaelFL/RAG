@@ -10,6 +10,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
+using Backend.Unit.RuntimeToolsTestsSupport;
+
 namespace Backend.Unit;
 
 public class RuntimeToolsTests
@@ -112,66 +114,7 @@ public class RuntimeToolsTests
         }
     }
 
-    private sealed class InMemoryTestCache : IApplicationCache
-    {
-        private readonly ConcurrentDictionary<string, object?> _items = new(StringComparer.OrdinalIgnoreCase);
 
-        public Task<T?> GetAsync<T>(string key, CancellationToken ct)
-        {
-            return Task.FromResult(_items.TryGetValue(key, out var value) ? (T?)value : default);
-        }
 
-        public Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken ct)
-        {
-            _items[key] = value;
-            return Task.CompletedTask;
-        }
 
-        public Task RemoveAsync(string key, CancellationToken ct)
-        {
-            _items.TryRemove(key, out _);
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class StubHttpClientFactory : IHttpClientFactory
-    {
-        private readonly HttpClient _client;
-
-        public StubHttpClientFactory(HttpMessageHandler handler)
-        {
-            _client = new HttpClient(handler, disposeHandler: false);
-        }
-
-        public HttpClient CreateClient(string name)
-        {
-            return _client;
-        }
-    }
-
-    private sealed class StubHttpMessageHandler : HttpMessageHandler
-    {
-        private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler;
-
-        public StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler)
-        {
-            _handler = handler;
-        }
-
-        public int RequestCount { get; private set; }
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            RequestCount++;
-            return Task.FromResult(_handler(request));
-        }
-    }
-
-    private sealed class TestHostEnvironment : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = Environments.Development;
-        public string ApplicationName { get; set; } = "Backend.Unit";
-        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } = null!;
-    }
 }

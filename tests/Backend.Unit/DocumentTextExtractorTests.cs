@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
+using Backend.Unit.DocumentTextExtractorTestsSupport;
+
 namespace Backend.Unit;
 
 public class DocumentTextExtractorTests
@@ -330,17 +332,4 @@ endobj
             }));
     }
 
-    private sealed class TrackingOcrProvider : IOcrProvider
-    {
-        public int CallCount { get; private set; }
-        public string Text { get; set; } = "ocr";
-
-        public string ProviderName => "Tracking";
-
-        public Task<OcrResultDto> ExtractAsync(Stream content, string fileName, CancellationToken ct)
-        {
-            CallCount++;
-            return Task.FromResult(new OcrResultDto { ExtractedText = Text });
-        }
-    }
 }

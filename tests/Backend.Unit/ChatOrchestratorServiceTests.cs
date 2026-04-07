@@ -8,6 +8,8 @@ using Microsoft.Extensions.Options;
 using Polly;
 using Xunit;
 
+using Backend.Unit.ChatOrchestratorServiceTestsSupport;
+
 namespace Backend.Unit;
 
 public class ChatOrchestratorServiceTests
@@ -233,206 +235,15 @@ public class ChatOrchestratorServiceTests
             NullLogger<ChatOrchestratorService>.Instance);
     }
 
-    private sealed class FakeRetrievalService : IRetrievalService
-    {
-        private readonly RetrievalResultDto _result;
 
-        public FakeRetrievalService(RetrievalResultDto result)
-        {
-            _result = result;
-        }
 
-        public Task<RetrievalResultDto> RetrieveAsync(RetrievalQueryDto query, CancellationToken ct) => Task.FromResult(_result);
 
-        public Task<SearchQueryResponseDto> QueryAsync(SearchQueryRequestDto query, CancellationToken ct) =>
-            Task.FromResult(new SearchQueryResponseDto());
-    }
 
-    private sealed class CountingRetrievalService : IRetrievalService
-    {
-        private readonly RetrievalResultDto _result;
 
-        public CountingRetrievalService(RetrievalResultDto result)
-        {
-            _result = result;
-        }
 
-        public int CallCount { get; private set; }
 
-        public Task<RetrievalResultDto> RetrieveAsync(RetrievalQueryDto query, CancellationToken ct)
-        {
-            CallCount++;
-            return Task.FromResult(_result);
-        }
 
-        public Task<SearchQueryResponseDto> QueryAsync(SearchQueryRequestDto query, CancellationToken ct) =>
-            Task.FromResult(new SearchQueryResponseDto());
-    }
 
-    private sealed class CapturingRetrievalService : IRetrievalService
-    {
-        private readonly RetrievalResultDto _result;
 
-        public CapturingRetrievalService(RetrievalResultDto result)
-        {
-            _result = result;
-        }
 
-        public RetrievalQueryDto? LastQuery { get; private set; }
-
-        public Task<RetrievalResultDto> RetrieveAsync(RetrievalQueryDto query, CancellationToken ct)
-        {
-            LastQuery = query;
-            return Task.FromResult(_result);
-        }
-
-        public Task<SearchQueryResponseDto> QueryAsync(SearchQueryRequestDto query, CancellationToken ct) =>
-            Task.FromResult(new SearchQueryResponseDto());
-    }
-
-    private sealed class FakeCitationAssembler : ICitationAssembler
-    {
-        public List<CitationDto> Assemble(IReadOnlyCollection<RetrievedChunkDto> chunks, int maxCitations)
-        {
-            return chunks.Take(maxCitations).Select(chunk => new CitationDto
-            {
-                DocumentId = chunk.DocumentId,
-                ChunkId = chunk.ChunkId,
-                DocumentTitle = chunk.DocumentTitle,
-                Snippet = chunk.Content,
-                Score = chunk.Score
-            }).ToList();
-        }
-    }
-
-    private sealed class CapturingSecurityAuditLogger : ISecurityAuditLogger
-    {
-        public string? LastPromptInjectionSource { get; private set; }
-
-        public void LogAccessDenied(string? userId, string resource)
-        {
-        }
-
-        public void LogAuthenticationFailure(string? userId, string reason)
-        {
-        }
-
-        public void LogFileRejected(string fileName, string reason)
-        {
-        }
-
-        public void LogPromptInjectionDetected(string source, string reason)
-        {
-            LastPromptInjectionSource = source;
-        }
-
-        public void LogProviderFallback(string provider, string fallbackProvider, string reason)
-        {
-        }
-    }
-
-    private sealed class CapturingChatSessionStore : IChatSessionStore
-    {
-        public ChatSessionTurnRecord? LastRecord { get; private set; }
-
-        public Task AppendTurnAsync(ChatSessionTurnRecord record, CancellationToken ct)
-        {
-            LastRecord = record;
-            return Task.CompletedTask;
-        }
-
-        public Task<ChatSessionSnapshot?> GetAsync(Guid sessionId, Guid tenantId, CancellationToken ct)
-        {
-            return Task.FromResult<ChatSessionSnapshot?>(null);
-        }
-    }
-
-    private sealed class FakeRequestContextAccessor : IRequestContextAccessor
-    {
-        public Guid? TenantId { get; set; } = Guid.Parse("aaaaaaaa-1111-1111-1111-111111111111");
-        public string? UserId { get; set; } = "bbbbbbbb-2222-2222-2222-222222222222";
-        public string? UserRole { get; set; } = "TenantAdmin";
-    }
-
-    private sealed class StaticFeatureFlagService : IFeatureFlagService
-    {
-        public bool IsSemanticRankingEnabled => true;
-        public bool IsGraphRagEnabled => false;
-        public bool IsMcpEnabled => false;
-    }
-
-    private sealed class StaticRagRuntimeSettings : IRagRuntimeSettings
-    {
-        public int DenseChunkSize => 420;
-        public int DenseOverlap => 48;
-        public int NarrativeChunkSize => 900;
-        public int NarrativeOverlap => 96;
-        public int MinimumChunkCharacters => 120;
-        public int RetrievalCandidateMultiplier => 3;
-        public int RetrievalMaxCandidateCount => 24;
-        public int MaxContextChunks => 4;
-        public double MinimumRerankScore => 0.1;
-        public double ExactMatchBoost => 0.18;
-        public double TitleMatchBoost => 0.08;
-        public double FilterMatchBoost => 0.05;
-        public TimeSpan RetrievalCacheTtl => TimeSpan.FromMinutes(5);
-        public TimeSpan ChatCompletionCacheTtl => TimeSpan.FromMinutes(10);
-        public TimeSpan EmbeddingCacheTtl => TimeSpan.FromHours(24);
-    }
-
-    private sealed class InMemoryApplicationCache : IApplicationCache
-    {
-        private readonly Dictionary<string, object> _entries = new();
-
-        public Task<T?> GetAsync<T>(string key, CancellationToken ct)
-        {
-            return Task.FromResult(_entries.TryGetValue(key, out var value) ? (T?)value : default);
-        }
-
-        public Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken ct)
-        {
-            _entries[key] = value!;
-            return Task.CompletedTask;
-        }
-
-        public Task RemoveAsync(string key, CancellationToken ct)
-        {
-            _entries.Remove(key);
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FakeChatCompletionProvider : IChatCompletionProvider
-    {
-        public Task<ChatCompletionResult> CompleteAsync(ChatCompletionRequest request, CancellationToken ct)
-        {
-            return Task.FromResult(new ChatCompletionResult
-            {
-                Message = request.RetrievedChunks.Count == 0
-                    ? $"Resposta geral para: {request.Message}"
-                    : $"Resposta fundamentada com {request.RetrievedChunks.Count} chunks.",
-                Model = "test-model",
-                PromptTokens = 11,
-                CompletionTokens = 7,
-                TotalTokens = 18
-            });
-        }
-    }
-
-    private sealed class StaticAgenticChatPlanner : IAgenticChatPlanner
-    {
-        private readonly AgenticChatPlan _plan;
-
-        public StaticAgenticChatPlanner(AgenticChatPlan? plan = null)
-        {
-            _plan = plan ?? new AgenticChatPlan
-            {
-                RequiresRetrieval = true,
-                AllowsGeneralKnowledge = false,
-                ExecutionMode = "grounded"
-            };
-        }
-
-        public AgenticChatPlan CreatePlan(ChatRequestDto request) => _plan;
-    }
 }

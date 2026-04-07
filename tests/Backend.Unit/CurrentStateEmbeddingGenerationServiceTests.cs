@@ -5,6 +5,8 @@ using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
+using Backend.Unit.CurrentStateEmbeddingGenerationServiceTestsSupport;
+
 namespace Backend.Unit;
 
 public class CurrentStateEmbeddingGenerationServiceTests
@@ -38,14 +40,4 @@ public class CurrentStateEmbeddingGenerationServiceTests
         result.All(item => item.VectorDimensions == 3).Should().BeTrue();
     }
 
-    private sealed class CountingEmbeddingProvider : IEmbeddingProvider
-    {
-        public int CallCount { get; private set; }
-
-        public Task<float[]> CreateEmbeddingAsync(string text, string? modelOverride, CancellationToken ct)
-        {
-            CallCount++;
-            return Task.FromResult(new[] { 1f, 2f, 3f });
-        }
-    }
 }

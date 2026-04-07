@@ -11,6 +11,8 @@ using Microsoft.Extensions.Options;
 using Polly;
 using Xunit;
 
+using Backend.Unit.RagPersistenceTestsSupport;
+
 namespace Backend.Unit;
 
 public class RagPersistenceTests
@@ -149,146 +151,11 @@ public class RagPersistenceTests
         updated.Version.Should().Be(4);
     }
 
-    private sealed class TestHostEnvironment : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = Environments.Development;
-        public string ApplicationName { get; set; } = "Backend.Unit";
-        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } = null!;
-    }
 
-    private sealed class CapturingPersistentChunkGateway : ISearchIndexGateway
-    {
-        private readonly Guid _documentId;
 
-        public CapturingPersistentChunkGateway(Guid documentId)
-        {
-            _documentId = documentId;
-        }
 
-        public List<DocumentChunkIndexDto> ReindexedChunks { get; } = new();
 
-        public Task DeleteDocumentAsync(Guid documentId, CancellationToken ct)
-        {
-            return Task.CompletedTask;
-        }
 
-        public Task<List<DocumentChunkIndexDto>> GetDocumentChunksAsync(Guid documentId, CancellationToken ct)
-        {
-            if (documentId != _documentId)
-            {
-                return Task.FromResult(new List<DocumentChunkIndexDto>());
-            }
 
-            return Task.FromResult(new List<DocumentChunkIndexDto>
-            {
-                new()
-                {
-                    ChunkId = "chunk-003",
-                    DocumentId = _documentId,
-                    Content = "Chunk recuperado do indice persistido",
-                    Embedding = new[] { 0.7f, 0.8f, 0.9f },
-                    PageNumber = 3,
-                    Section = "Operacao",
-                    Metadata = new Dictionary<string, string>
-                    {
-                        ["chunkIndex"] = "0",
-                        ["contentHash"] = "hash-atual",
-                        ["embeddingModel"] = "default"
-                    }
-                }
-            });
-        }
 
-        public Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
-        {
-            return Task.FromResult(new List<SearchResultDto>());
-        }
-
-        public Task IndexDocumentChunksAsync(List<DocumentChunkIndexDto> chunks, CancellationToken ct)
-        {
-            ReindexedChunks.AddRange(chunks.Select(chunk => new DocumentChunkIndexDto
-            {
-                ChunkId = chunk.ChunkId,
-                DocumentId = chunk.DocumentId,
-                Content = chunk.Content,
-                Embedding = chunk.Embedding?.ToArray(),
-                PageNumber = chunk.PageNumber,
-                Section = chunk.Section,
-                Metadata = new Dictionary<string, string>(chunk.Metadata)
-            }));
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class CountingEmbeddingProvider : IEmbeddingProvider
-    {
-        public int CallCount { get; private set; }
-
-        public Task<float[]> CreateEmbeddingAsync(string text, string? modelOverride, CancellationToken ct)
-        {
-            CallCount++;
-            return Task.FromResult(new[] { 0.2f, 0.3f, 0.4f });
-        }
-    }
-
-    private sealed class NoOpDocumentTextExtractor : IDocumentTextExtractor
-    {
-        public Task<DocumentTextExtractionResultDto> ExtractAsync(IngestDocumentCommand command, CancellationToken ct)
-        {
-            throw new NotSupportedException();
-        }
-    }
-
-    private sealed class NoOpChunkingStrategy : IChunkingStrategy
-    {
-        public List<DocumentChunkIndexDto> Chunk(IngestDocumentCommand command, DocumentTextExtractionResultDto extraction)
-        {
-            return new List<DocumentChunkIndexDto>();
-        }
-    }
-
-    private sealed class NoOpBlobStorageGateway : IBlobStorageGateway
-    {
-        public Task DeleteAsync(string path, CancellationToken ct) => Task.CompletedTask;
-
-        public Task<Stream> GetAsync(string path, CancellationToken ct)
-        {
-            return Task.FromResult<Stream>(new MemoryStream(Encoding.UTF8.GetBytes("conteudo")));
-        }
-
-        public Task<string> SaveAsync(Stream content, string path, CancellationToken ct) => Task.FromResult(path);
-    }
-
-    private sealed class NoOpPromptInjectionDetector : IPromptInjectionDetector
-    {
-        public bool TryDetect(string? input, out string pattern)
-        {
-            pattern = string.Empty;
-            return false;
-        }
-    }
-
-    private sealed class NoOpSecurityAuditLogger : ISecurityAuditLogger
-    {
-        public void LogAccessDenied(string? userId, string resource)
-        {
-        }
-
-        public void LogAuthenticationFailure(string? userId, string reason)
-        {
-        }
-
-        public void LogFileRejected(string fileName, string reason)
-        {
-        }
-
-        public void LogPromptInjectionDetected(string source, string reason)
-        {
-        }
-
-        public void LogProviderFallback(string provider, string fallbackProvider, string reason)
-        {
-        }
-    }
 }

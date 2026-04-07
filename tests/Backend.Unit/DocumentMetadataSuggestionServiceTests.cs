@@ -5,6 +5,8 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
+using Backend.Unit.DocumentMetadataSuggestionServiceTestsSupport;
+
 namespace Backend.Unit;
 
 public class DocumentMetadataSuggestionServiceTests
@@ -74,37 +76,5 @@ public class DocumentMetadataSuggestionServiceTests
         result.Strategy.Should().Be("heuristic-filename-fallback");
     }
 
-    private sealed class StubDocumentTextExtractor : IDocumentTextExtractor
-    {
-        private readonly string _text;
 
-        public StubDocumentTextExtractor(string text)
-        {
-            _text = text;
-        }
-
-        public Task<DocumentTextExtractionResultDto> ExtractAsync(IngestDocumentCommand command, CancellationToken ct)
-        {
-            return Task.FromResult(new DocumentTextExtractionResultDto
-            {
-                Text = _text,
-                Strategy = "direct"
-            });
-        }
-    }
-
-    private sealed class ThrowingDocumentTextExtractor : IDocumentTextExtractor
-    {
-        private readonly Exception _exception;
-
-        public ThrowingDocumentTextExtractor(Exception exception)
-        {
-            _exception = exception;
-        }
-
-        public Task<DocumentTextExtractionResultDto> ExtractAsync(IngestDocumentCommand command, CancellationToken ct)
-        {
-            throw _exception;
-        }
-    }
 }

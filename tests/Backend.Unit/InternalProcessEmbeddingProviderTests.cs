@@ -8,6 +8,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
+using Backend.Unit.InternalProcessEmbeddingProviderTestsSupport;
+
 namespace Backend.Unit;
 
 public class InternalProcessEmbeddingProviderTests
@@ -55,11 +57,4 @@ public class InternalProcessEmbeddingProviderTests
         return (string)method!.Invoke(provider, new object[] { path })!;
     }
 
-    private sealed class TestHostEnvironment : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = Environments.Development;
-        public string ApplicationName { get; set; } = "Backend.Unit";
-        public string ContentRootPath { get; set; } = string.Empty;
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
-    }
 }

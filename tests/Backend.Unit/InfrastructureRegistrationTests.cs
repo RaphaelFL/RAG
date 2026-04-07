@@ -11,6 +11,8 @@ using Microsoft.Extensions.Options;
 using Xunit;
 using AppCfg = Chatbot.Application.Configuration;
 
+using Backend.Unit.InfrastructureRegistrationTestsSupport;
+
 namespace Backend.Unit;
 
 public class InfrastructureRegistrationTests
@@ -179,12 +181,5 @@ public class InfrastructureRegistrationTests
         services.AddSingleton<IHostEnvironment>(new TestHostEnvironment());
     }
 
-    private sealed class TestHostEnvironment : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = Environments.Development;
-        public string ApplicationName { get; set; } = "Backend.Unit";
-        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } = null!;
-    }
 
 }

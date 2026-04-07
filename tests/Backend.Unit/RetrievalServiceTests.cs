@@ -5,6 +5,8 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
+using Backend.Unit.RetrievalServiceTestsSupport;
+
 namespace Backend.Unit;
 
 public class RetrievalServiceTests
@@ -370,125 +372,11 @@ public class RetrievalServiceTests
         gateway.CallCount.Should().Be(2);
     }
 
-    private sealed class TestRequestContextAccessor : IRequestContextAccessor
-    {
-        public Guid? TenantId { get; set; }
-        public string? UserId { get; set; }
-        public string? UserRole { get; set; }
-    }
 
-    private sealed class StaticFeatureFlagService : IFeatureFlagService
-    {
-        public bool IsSemanticRankingEnabled { get; set; } = true;
-        public bool IsGraphRagEnabled => false;
-        public bool IsMcpEnabled => false;
-    }
 
-    private sealed class StaticRagRuntimeSettings : IRagRuntimeSettings
-    {
-        public int DenseChunkSize => 420;
-        public int DenseOverlap => 48;
-        public int NarrativeChunkSize => 900;
-        public int NarrativeOverlap => 96;
-        public int MinimumChunkCharacters => 120;
-        public int RetrievalCandidateMultiplier => 3;
-        public int RetrievalMaxCandidateCount => 24;
-        public int MaxContextChunks => 4;
-        public double MinimumRerankScore => 0.1;
-        public double ExactMatchBoost => 0.18;
-        public double TitleMatchBoost => 0.08;
-        public double FilterMatchBoost => 0.05;
-        public TimeSpan RetrievalCacheTtl => TimeSpan.FromMinutes(5);
-        public TimeSpan ChatCompletionCacheTtl => TimeSpan.FromMinutes(10);
-        public TimeSpan EmbeddingCacheTtl => TimeSpan.FromHours(24);
-    }
 
-    private sealed class StaticEmbeddingProvider : IEmbeddingProvider
-    {
-        private readonly float[] _embedding;
 
-        public StaticEmbeddingProvider(float[]? embedding = null)
-        {
-            _embedding = embedding ?? new float[] { 0.25f, 0.5f, 0.75f };
-        }
 
-        public Task<float[]> CreateEmbeddingAsync(string text, string? modelOverride, CancellationToken ct)
-        {
-            return Task.FromResult(_embedding);
-        }
-    }
 
-    private sealed class InMemoryApplicationCache : IApplicationCache
-    {
-        private readonly Dictionary<string, object> _entries = new();
 
-        public Task<T?> GetAsync<T>(string key, CancellationToken ct)
-        {
-            return Task.FromResult(_entries.TryGetValue(key, out var value) ? (T?)value : default);
-        }
-
-        public Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken ct)
-        {
-            _entries[key] = value!;
-            return Task.CompletedTask;
-        }
-
-        public Task RemoveAsync(string key, CancellationToken ct)
-        {
-            _entries.Remove(key);
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class AllowAllDocumentAuthorizationService : IDocumentAuthorizationService
-    {
-        public bool CanAccess(DocumentCatalogEntry document, Guid? tenantId, string? userId, string? userRole) => true;
-    }
-
-    private sealed class InMemoryDocumentCatalogStub : IDocumentCatalog
-    {
-        private readonly Dictionary<Guid, DocumentCatalogEntry> _entries = new();
-
-        public void Upsert(DocumentCatalogEntry entry) => _entries[entry.DocumentId] = entry;
-
-        public DocumentCatalogEntry? Get(Guid documentId) => _entries.TryGetValue(documentId, out var entry) ? entry : null;
-
-        public IReadOnlyCollection<DocumentCatalogEntry> Query(FileSearchFilterDto? filters) => _entries.Values.ToList();
-
-        public DocumentCatalogEntry? FindByContentHash(Guid tenantId, string contentHash) => null;
-    }
-
-    private sealed class CapturingSearchIndexGateway : ISearchIndexGateway
-    {
-        public FileSearchFilterDto? LastFilters { get; private set; }
-
-        public float[]? LastQueryEmbedding { get; private set; }
-
-        public List<SearchResultDto> Results { get; set; } = new();
-
-        public int CallCount { get; private set; }
-
-        public Task DeleteDocumentAsync(Guid documentId, CancellationToken ct)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task<List<DocumentChunkIndexDto>> GetDocumentChunksAsync(Guid documentId, CancellationToken ct)
-        {
-            return Task.FromResult(new List<DocumentChunkIndexDto>());
-        }
-
-        public Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
-        {
-            LastFilters = filters;
-            LastQueryEmbedding = queryEmbedding;
-            CallCount++;
-            return Task.FromResult(Results.Take(topK).ToList());
-        }
-
-        public Task IndexDocumentChunksAsync(List<DocumentChunkIndexDto> chunks, CancellationToken ct)
-        {
-            return Task.CompletedTask;
-        }
-    }
 }
