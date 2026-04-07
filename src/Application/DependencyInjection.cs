@@ -23,6 +23,10 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IChatEvidenceSelector, ChatEvidenceSelector>();
         services.AddSingleton<IChatStreamingSegmenter, ChatStreamingSegmenter>();
         services.AddSingleton<IChatCompletionCacheKeyFactory, ChatCompletionCacheKeyFactory>();
+        services.AddScoped<IGovernedAgentHandler, FileSearchAgentHandler>();
+        services.AddScoped<IGovernedAgentHandler, WebSearchAgentHandler>();
+        services.AddScoped<IGovernedAgentHandler, CodeInterpreterAgentHandler>();
+        services.AddScoped<IGovernedAgentHandler, PromptAssemblyAgentHandler>();
         services.AddSingleton<IAgenticChatPlanner, LocalAgenticChatPlanner>();
         services.AddScoped<IChatOrchestrator, ChatOrchestratorService>();
         services.AddSingleton<IRetrievalCacheKeyFactory, RetrievalCacheKeyFactory>();
@@ -33,6 +37,10 @@ public static class ApplicationServiceRegistration
         services.AddScoped<IDocumentReindexService, DocumentReindexService>();
         services.AddScoped<IDocumentQueryService, DocumentQueryService>();
         services.AddScoped<IDocumentMetadataSuggestionService, DocumentMetadataSuggestionService>();
+        services.AddScoped<IIngestionCommandFactory, IngestionCommandFactory>();
+        services.AddScoped<IIngestionExtractionService, IngestionExtractionService>();
+        services.AddScoped<IIngestionChunkEnricher, IngestionChunkEnricher>();
+        services.AddScoped<IIngestionDocumentStateService, IngestionDocumentStateService>();
         services.AddScoped<IIngestionJobProcessor, IngestionJobProcessor>();
         services.AddScoped<IEmbeddingGenerationService, CurrentStateEmbeddingGenerationService>();
         services.AddScoped<IRetriever, CurrentStateRetrieverAdapter>();

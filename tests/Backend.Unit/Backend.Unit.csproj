@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\Application\Chatbot.Application.csproj" />
     <ProjectReference Include="..\..\src\Ingestion\Chatbot.Ingestion.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\Chatbot.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Mcp\Chatbot.Mcp.csproj" />
   </ItemGroup>
 
 </Project>

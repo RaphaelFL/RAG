@@ -119,16 +119,21 @@ public class RagPersistenceTests
 
         var searchIndexGateway = new CapturingPersistentChunkGateway(documentId);
         var embeddingProvider = new CountingEmbeddingProvider();
+        var resiliencePipeline = new ResiliencePipelineBuilder().Build();
         var sut = new IngestionJobProcessor(
-            new NoOpDocumentTextExtractor(),
-            embeddingProvider,
+            new IngestionCommandFactory(),
+            new IngestionExtractionService(
+                new NoOpDocumentTextExtractor(),
+                new NoOpPromptInjectionDetector(),
+                new NoOpSecurityAuditLogger(),
+                resiliencePipeline),
+            new IngestionChunkEnricher(embeddingProvider, resiliencePipeline),
+            new IngestionDocumentStateService(catalog),
             searchIndexGateway,
             new NoOpChunkingStrategy(),
             catalog,
             new NoOpBlobStorageGateway(),
-            new NoOpPromptInjectionDetector(),
-            new NoOpSecurityAuditLogger(),
-            new ResiliencePipelineBuilder().Build(),
+            resiliencePipeline,
             NullLogger<IngestionJobProcessor>.Instance);
 
         await sut.ProcessReindexAsync(new ReindexBackgroundJob
