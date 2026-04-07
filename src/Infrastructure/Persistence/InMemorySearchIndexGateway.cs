@@ -4,7 +4,7 @@ namespace Chatbot.Infrastructure.Persistence;
 
 public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
 {
-    private static readonly List<IndexedChunk> Index = new();
+    private static readonly List<InMemoryIndexedChunk> Index = new();
     private readonly IDocumentCatalog _documentCatalog;
 
     public InMemorySearchIndexGateway(IDocumentCatalog documentCatalog)
@@ -19,7 +19,7 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
             foreach (var chunk in chunks)
             {
                 Index.RemoveAll(existing => existing.ChunkId == chunk.ChunkId);
-                Index.Add(new IndexedChunk
+                Index.Add(new InMemoryIndexedChunk
                 {
                     ChunkId = chunk.ChunkId,
                     DocumentId = chunk.DocumentId,
@@ -63,7 +63,7 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
 
     public Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
     {
-        List<IndexedChunk> candidateResults;
+        List<InMemoryIndexedChunk> candidateResults;
         lock (Index)
         {
             candidateResults = Index.Where(result => MatchesFilters(result, filters)).ToList();
@@ -100,17 +100,17 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
         return Task.CompletedTask;
     }
 
-    private List<IndexedChunk> BuildFallbackResults(string query, FileSearchFilterDto? filters)
+    private List<InMemoryIndexedChunk> BuildFallbackResults(string query, FileSearchFilterDto? filters)
     {
         var documents = _documentCatalog.Query(filters);
         if (documents.Count == 0)
         {
-            return new List<IndexedChunk>();
+            return new List<InMemoryIndexedChunk>();
         }
 
         return documents
             .SelectMany(document => document.Chunks)
-            .Select(chunk => new IndexedChunk
+            .Select(chunk => new InMemoryIndexedChunk
             {
                 ChunkId = chunk.ChunkId,
                 DocumentId = chunk.DocumentId,
@@ -122,7 +122,7 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
             .ToList();
     }
 
-    private static bool MatchesFilters(IndexedChunk result, FileSearchFilterDto? filters)
+    private static bool MatchesFilters(InMemoryIndexedChunk result, FileSearchFilterDto? filters)
     {
         if (filters is null)
         {
@@ -190,7 +190,7 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
         return true;
     }
 
-    private static double CalculateScore(string query, float[]? queryEmbedding, IndexedChunk result)
+    private static double CalculateScore(string query, float[]? queryEmbedding, InMemoryIndexedChunk result)
     {
         if (string.IsNullOrWhiteSpace(query) || string.IsNullOrWhiteSpace(result.Content))
         {
@@ -253,38 +253,4 @@ public sealed class InMemorySearchIndexGateway : ISearchIndexGateway
         };
     }
 
-    private sealed class IndexedChunk : SearchResultDto
-    {
-        public float[]? Embedding { get; init; }
-
-        public DocumentChunkIndexDto ToDocumentChunk()
-        {
-            return new DocumentChunkIndexDto
-            {
-                ChunkId = ChunkId,
-                DocumentId = DocumentId,
-                Content = Content,
-                Embedding = Embedding?.ToArray(),
-                PageNumber = GetPageNumber(),
-                Section = Metadata.TryGetValue("section", out var section) ? section : null,
-                Metadata = new Dictionary<string, string>(Metadata)
-            };
-        }
-
-        public int GetChunkIndex()
-        {
-            return Metadata.TryGetValue("chunkIndex", out var rawChunkIndex) && int.TryParse(rawChunkIndex, out var chunkIndex)
-                ? chunkIndex
-                : 0;
-        }
-
-        private int GetPageNumber()
-        {
-            return Metadata.TryGetValue("startPage", out var rawStartPage) && int.TryParse(rawStartPage, out var startPage)
-                ? startPage
-                : Metadata.TryGetValue("page", out var rawPage) && int.TryParse(rawPage, out var page)
-                ? page
-                : 0;
-        }
-    }
 }

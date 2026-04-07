@@ -315,13 +315,6 @@ public sealed class FileSystemOperationalAuditStore : IOperationalAuditStore
         return CursorComparer.Compare(entry.EntryId, cursor.EntryId) < 0;
     }
 
-    private sealed class CursorToken
-    {
-        public DateTime CreatedAtUtc { get; set; }
-        public string Category { get; set; } = string.Empty;
-        public string EntryId { get; set; } = string.Empty;
-    }
-
     private static string ResolveBasePath(string configuredPath, string contentRootPath)
     {
         return Path.IsPathRooted(configuredPath)

@@ -16,7 +16,7 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
     private readonly object _sync = new();
     private readonly string _indexFilePath;
     private readonly IDocumentCatalog _documentCatalog;
-    private Dictionary<string, IndexedChunk> _index;
+    private Dictionary<string, LocalPersistentIndexedChunk> _index;
 
     public LocalPersistentSearchIndexGateway(IDocumentCatalog documentCatalog, IOptions<LocalPersistenceOptions> options, IHostEnvironment environment)
     {
@@ -33,7 +33,7 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
         {
             foreach (var chunk in chunks)
             {
-                _index[chunk.ChunkId] = IndexedChunk.From(chunk);
+                _index[chunk.ChunkId] = LocalPersistentIndexedChunk.From(chunk);
             }
 
             Persist();
@@ -71,10 +71,10 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
 
     public Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
     {
-        List<IndexedChunk> candidateResults;
+        List<LocalPersistentIndexedChunk> candidateResults;
         lock (_sync)
         {
-            candidateResults = _index.Values.Where(result => MatchesFilters(result, filters)).Select(IndexedChunk.Clone).ToList();
+            candidateResults = _index.Values.Where(result => MatchesFilters(result, filters)).Select(LocalPersistentIndexedChunk.Clone).ToList();
         }
 
         if (candidateResults.Count == 0)
@@ -118,15 +118,15 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
         return Task.CompletedTask;
     }
 
-    private List<IndexedChunk> BuildFallbackResults(FileSearchFilterDto? filters)
+    private List<LocalPersistentIndexedChunk> BuildFallbackResults(FileSearchFilterDto? filters)
     {
         return _documentCatalog.Query(filters)
             .SelectMany(document => document.Chunks)
-            .Select(chunk => IndexedChunk.From(chunk, 0.9))
+            .Select(chunk => LocalPersistentIndexedChunk.From(chunk, 0.9))
             .ToList();
     }
 
-    private static bool MatchesFilters(IndexedChunk result, FileSearchFilterDto? filters)
+    private static bool MatchesFilters(LocalPersistentIndexedChunk result, FileSearchFilterDto? filters)
     {
         if (filters is null)
         {
@@ -194,7 +194,7 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
         return true;
     }
 
-    private static double CalculateScore(string query, float[]? queryEmbedding, IndexedChunk result)
+    private static double CalculateScore(string query, float[]? queryEmbedding, LocalPersistentIndexedChunk result)
     {
         if (string.IsNullOrWhiteSpace(query) || string.IsNullOrWhiteSpace(result.Content))
         {
@@ -243,22 +243,22 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
         return (dot / (Math.Sqrt(leftNorm) * Math.Sqrt(rightNorm)) + 1d) / 2d;
     }
 
-    private Dictionary<string, IndexedChunk> Load()
+    private Dictionary<string, LocalPersistentIndexedChunk> Load()
     {
         if (!File.Exists(_indexFilePath))
         {
-            return new Dictionary<string, IndexedChunk>(StringComparer.OrdinalIgnoreCase);
+            return new Dictionary<string, LocalPersistentIndexedChunk>(StringComparer.OrdinalIgnoreCase);
         }
 
         try
         {
             var json = File.ReadAllText(_indexFilePath);
-            var values = JsonSerializer.Deserialize<List<IndexedChunk>>(json, SerializerOptions) ?? new List<IndexedChunk>();
-            return values.ToDictionary(item => item.ChunkId, IndexedChunk.Clone, StringComparer.OrdinalIgnoreCase);
+            var values = JsonSerializer.Deserialize<List<LocalPersistentIndexedChunk>>(json, SerializerOptions) ?? new List<LocalPersistentIndexedChunk>();
+            return values.ToDictionary(item => item.ChunkId, LocalPersistentIndexedChunk.Clone, StringComparer.OrdinalIgnoreCase);
         }
         catch
         {
-            return new Dictionary<string, IndexedChunk>(StringComparer.OrdinalIgnoreCase);
+            return new Dictionary<string, LocalPersistentIndexedChunk>(StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -291,69 +291,4 @@ public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
         };
     }
 
-    private sealed class IndexedChunk
-    {
-        public string ChunkId { get; set; } = string.Empty;
-        public Guid DocumentId { get; set; }
-        public string Content { get; set; } = string.Empty;
-        public double Score { get; set; }
-        public Dictionary<string, string> Metadata { get; set; } = new();
-        public float[]? Embedding { get; set; }
-
-        public DocumentChunkIndexDto ToDocumentChunk()
-        {
-            return new DocumentChunkIndexDto
-            {
-                ChunkId = ChunkId,
-                DocumentId = DocumentId,
-                Content = Content,
-                Embedding = Embedding?.ToArray(),
-                PageNumber = GetPageNumber(),
-                Section = Metadata.TryGetValue("section", out var section) ? section : null,
-                Metadata = new Dictionary<string, string>(Metadata)
-            };
-        }
-
-        public int GetChunkIndex()
-        {
-            return Metadata.TryGetValue("chunkIndex", out var rawChunkIndex) && int.TryParse(rawChunkIndex, out var chunkIndex)
-                ? chunkIndex
-                : 0;
-        }
-
-        private int GetPageNumber()
-        {
-            return Metadata.TryGetValue("startPage", out var rawStartPage) && int.TryParse(rawStartPage, out var startPage)
-                ? startPage
-                : Metadata.TryGetValue("page", out var rawPage) && int.TryParse(rawPage, out var page)
-                ? page
-                : 0;
-        }
-
-        public static IndexedChunk From(DocumentChunkIndexDto chunk, double score = 0.95)
-        {
-            return new IndexedChunk
-            {
-                ChunkId = chunk.ChunkId,
-                DocumentId = chunk.DocumentId,
-                Content = chunk.Content,
-                Score = score,
-                Metadata = new Dictionary<string, string>(chunk.Metadata),
-                Embedding = chunk.Embedding?.ToArray()
-            };
-        }
-
-        public static IndexedChunk Clone(IndexedChunk source)
-        {
-            return new IndexedChunk
-            {
-                ChunkId = source.ChunkId,
-                DocumentId = source.DocumentId,
-                Content = source.Content,
-                Score = source.Score,
-                Metadata = new Dictionary<string, string>(source.Metadata),
-                Embedding = source.Embedding?.ToArray()
-            };
-        }
-    }
 }

@@ -131,11 +131,11 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
             var candidateCount = Math.Max(topK, topK * Math.Max(1, _vectorOptions.CandidateMultiplier));
             var vectorResults = queryEmbedding is { Length: > 0 }
                 ? await SearchByVectorAsync(database, queryEmbedding, candidateCount, filters)
-                : new Dictionary<string, SearchResultAccumulator>(StringComparer.OrdinalIgnoreCase);
+                : new Dictionary<string, RedisSearchResultAccumulator>(StringComparer.OrdinalIgnoreCase);
 
             var lexicalResults = !string.IsNullOrWhiteSpace(query)
                 ? await SearchLexicalAsync(database, query, candidateCount, filters)
-                : new Dictionary<string, SearchResultAccumulator>(StringComparer.OrdinalIgnoreCase);
+                : new Dictionary<string, RedisSearchResultAccumulator>(StringComparer.OrdinalIgnoreCase);
 
             var merged = MergeResults(vectorResults, lexicalResults)
                 .OrderByDescending(item => item.Score)
@@ -337,7 +337,7 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
         }
     }
 
-    private async Task<Dictionary<string, SearchResultAccumulator>> SearchByVectorAsync(IDatabase database, float[] queryEmbedding, int candidateCount, FileSearchFilterDto? filters)
+    private async Task<Dictionary<string, RedisSearchResultAccumulator>> SearchByVectorAsync(IDatabase database, float[] queryEmbedding, int candidateCount, FileSearchFilterDto? filters)
     {
         var searchQuery = $"{BuildFilterQuery(filters)}=>[KNN {candidateCount} @vector $BLOB AS vector_score]";
         var response = await database.ExecuteAsync(
@@ -354,7 +354,7 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
         return ParseSearchResponse(response, isVectorResult: true);
     }
 
-    private async Task<Dictionary<string, SearchResultAccumulator>> SearchLexicalAsync(IDatabase database, string query, int candidateCount, FileSearchFilterDto? filters)
+    private async Task<Dictionary<string, RedisSearchResultAccumulator>> SearchLexicalAsync(IDatabase database, string query, int candidateCount, FileSearchFilterDto? filters)
     {
         var escapedTerms = EscapeTextQuery(query);
         var lexicalQuery = string.IsNullOrWhiteSpace(escapedTerms)
@@ -373,9 +373,9 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
         return ParseSearchResponse(response, isVectorResult: false);
     }
 
-    private IEnumerable<SearchResultAccumulator> MergeResults(
-        Dictionary<string, SearchResultAccumulator> vectorResults,
-        Dictionary<string, SearchResultAccumulator> lexicalResults)
+    private IEnumerable<RedisSearchResultAccumulator> MergeResults(
+        Dictionary<string, RedisSearchResultAccumulator> vectorResults,
+        Dictionary<string, RedisSearchResultAccumulator> lexicalResults)
     {
         var allChunkIds = vectorResults.Keys.Union(lexicalResults.Keys, StringComparer.OrdinalIgnoreCase);
 
@@ -400,9 +400,9 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
         }
     }
 
-    private Dictionary<string, SearchResultAccumulator> ParseSearchResponse(RedisResult response, bool isVectorResult)
+    private Dictionary<string, RedisSearchResultAccumulator> ParseSearchResponse(RedisResult response, bool isVectorResult)
     {
-        var items = new Dictionary<string, SearchResultAccumulator>(StringComparer.OrdinalIgnoreCase);
+        var items = new Dictionary<string, RedisSearchResultAccumulator>(StringComparer.OrdinalIgnoreCase);
         if (response.IsNull)
         {
             return items;
@@ -474,7 +474,7 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
                 metadata["endPage"] = ReadField(fields, "endPageNumber");
             }
 
-            var result = new SearchResultAccumulator
+            var result = new RedisSearchResultAccumulator
             {
                 ChunkId = chunkId,
                 DocumentId = documentId,
@@ -751,26 +751,4 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
             : 0;
     }
 
-    private sealed class SearchResultAccumulator
-    {
-        public string ChunkId { get; set; } = string.Empty;
-        public Guid DocumentId { get; set; }
-        public string Content { get; set; } = string.Empty;
-        public Dictionary<string, string> Metadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public double VectorScore { get; set; }
-        public double LexicalScore { get; set; }
-        public double Score { get; set; }
-
-        public SearchResultDto ToDto()
-        {
-            return new SearchResultDto
-            {
-                ChunkId = ChunkId,
-                DocumentId = DocumentId,
-                Content = Content,
-                Score = Score,
-                Metadata = Metadata
-            };
-        }
-    }
 }
