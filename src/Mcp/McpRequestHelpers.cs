@@ -5,6 +5,11 @@ namespace Chatbot.Mcp;
 
 public static class McpRequestHelpers
 {
+    public static JsonElement GetRoot(object? parameters)
+    {
+        return JsonDocument.Parse(JsonSerializer.Serialize(parameters)).RootElement.Clone();
+    }
+
     public static JsonElement GetArguments(JsonElement root)
     {
         return root.TryGetProperty("arguments", out var arguments)

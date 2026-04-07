@@ -86,6 +86,34 @@ public class McpServerTests
         result.Error!.Code.Should().Be(-32601);
     }
 
+    [Fact]
+    public async Task HandleAsync_ShouldRead_RuntimeCapabilitiesResource()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.HandleAsync(new JsonRpcRequest
+        {
+            Method = "resources/read",
+            Id = "1",
+            Params = new
+            {
+                uri = "rag://runtime-capabilities"
+            }
+        }, new ClaimsPrincipal(new ClaimsIdentity()), CancellationToken.None);
+
+        result.Error.Should().BeNull();
+        result.Result.Should().NotBeNull();
+        result.Result.Should().BeEquivalentTo(new
+        {
+            mcpEnabled = true,
+            webSearchEnabled = true,
+            codeInterpreterEnabled = true,
+            agentRuntimeEnabled = true,
+            semanticRankingEnabled = false,
+            graphRagEnabled = false
+        });
+    }
+
     private static McpServer CreateSut(bool enableMcp = true, IEnumerable<IMcpToolHandler>? toolHandlers = null)
     {
         var promptRegistry = new PromptTemplateRegistry(Options.Create(new PromptTemplateOptions
@@ -96,14 +124,23 @@ public class McpServerTests
             BlockedInputPatterns = new[] { "ignore previous instructions" }
         }));
 
+        var featureFlags = Options.Create(new FeatureFlagOptions { EnableMcp = enableMcp });
+        var embeddingOptions = Options.Create(new EmbeddingGenerationOptions { ModelName = "test", ModelVersion = "1", Dimensions = 3, BatchSize = 1, PrimaryRuntime = "local" });
+        var vectorStoreOptions = Options.Create(new VectorStoreOptions { Provider = "memory", DefaultTopK = 5, DefaultScoreThreshold = 0.5, Schema = "v1" });
+        var agentRuntimeOptions = Options.Create(new AgentRuntimeOptions { Enabled = true, MaxToolBudget = 4 });
+        var webSearchOptions = Options.Create(new WebSearchOptions { Enabled = true, DefaultTopK = 5, AllowedHosts = Array.Empty<string>() });
+        var codeInterpreterOptions = Options.Create(new CodeInterpreterOptions { Enabled = true, Runtime = "python" });
+        var methodHandlers = new IMcpMethodHandler[]
+        {
+            new ToolListMethodHandler(),
+            new ResourceListMethodHandler(),
+            new ResourceReadMethodHandler(promptRegistry, featureFlags, embeddingOptions, vectorStoreOptions, agentRuntimeOptions, webSearchOptions, codeInterpreterOptions),
+            new PromptListMethodHandler(promptRegistry),
+            new ToolCallMethodHandler(toolHandlers ?? Array.Empty<IMcpToolHandler>())
+        };
+
         return new McpServer(
-            toolHandlers ?? Array.Empty<IMcpToolHandler>(),
-            promptRegistry,
-            Options.Create(new FeatureFlagOptions { EnableMcp = enableMcp }),
-            Options.Create(new EmbeddingGenerationOptions { ModelName = "test", ModelVersion = "1", Dimensions = 3, BatchSize = 1, PrimaryRuntime = "local" }),
-            Options.Create(new VectorStoreOptions { Provider = "memory", DefaultTopK = 5, DefaultScoreThreshold = 0.5, Schema = "v1" }),
-            Options.Create(new AgentRuntimeOptions { Enabled = true, MaxToolBudget = 4 }),
-            Options.Create(new WebSearchOptions { Enabled = true, DefaultTopK = 5, AllowedHosts = Array.Empty<string>() }),
-            Options.Create(new CodeInterpreterOptions { Enabled = true, Runtime = "python" }));
+            methodHandlers,
+            featureFlags);
     }
 }

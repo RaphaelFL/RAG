@@ -11,6 +11,11 @@ public static class McpServiceRegistration
 {
     public static IServiceCollection AddMcp(this IServiceCollection services)
     {
+        services.AddScoped<IMcpMethodHandler, ToolListMethodHandler>();
+        services.AddScoped<IMcpMethodHandler, ResourceListMethodHandler>();
+        services.AddScoped<IMcpMethodHandler, ResourceReadMethodHandler>();
+        services.AddScoped<IMcpMethodHandler, PromptListMethodHandler>();
+        services.AddScoped<IMcpMethodHandler, ToolCallMethodHandler>();
         services.AddScoped<IMcpToolHandler, SearchToolHandler>();
         services.AddScoped<IMcpToolHandler, RetrieveDocumentChunksToolHandler>();
         services.AddScoped<IMcpToolHandler, SummarizeSourcesToolHandler>();
