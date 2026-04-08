@@ -54,44 +54,53 @@ export async function streamChatMessage(
     );
   }
 
-  for await (const entry of readServerSentEvents(response.body)) {
-    const parsed = normalizeStreamPayload(JSON.parse(entry.data));
-    const payload = parsed.data ?? parsed;
+  const eventHandlers = createStreamEventHandlers(handlers);
 
-    if (entry.event === 'started') {
+  for await (const entry of readServerSentEvents(response.body)) {
+    const payload = parseStreamEventPayload(entry.data);
+    eventHandlers[entry.event]?.(payload);
+  }
+}
+
+function parseStreamEventPayload(data: string): unknown {
+  const parsed = normalizeStreamPayload(JSON.parse(data));
+  return parsed.data ?? parsed;
+}
+
+function createStreamEventHandlers(handlers: {
+  onStarted: (event: StreamStartedEvent) => void;
+  onDelta: (event: StreamDeltaEvent) => void;
+  onCitation: (citation: Citation) => void;
+  onCompleted: (payload: { usage: UsageMetadata }) => void;
+  onError: (error: StreamErrorEvent) => void;
+}): Partial<Record<string, (payload: unknown) => void>> {
+  return {
+    started: (payload: unknown) => {
       if (isStreamStartedEvent(payload)) {
         handlers.onStarted(payload);
       }
-      continue;
-    }
-
-    if (entry.event === 'delta') {
+    },
+    delta: (payload: unknown) => {
       if (isStreamDeltaEvent(payload)) {
         handlers.onDelta(payload);
       }
-      continue;
-    }
-
-    if (entry.event === 'citation') {
+    },
+    citation: (payload: unknown) => {
       if (isCitation(payload)) {
         handlers.onCitation(payload);
       }
-      continue;
-    }
-
-    if (entry.event === 'completed') {
+    },
+    completed: (payload: unknown) => {
       if (hasUsagePayload(payload)) {
         handlers.onCompleted(payload);
       }
-      continue;
-    }
-
-    if (entry.event === 'error') {
+    },
+    error: (payload: unknown) => {
       if (isStreamErrorEvent(payload)) {
         handlers.onError(payload);
       }
     }
-  }
+  };
 }
 
 function normalizeStreamPayload(payload: unknown): Record<string, unknown> {

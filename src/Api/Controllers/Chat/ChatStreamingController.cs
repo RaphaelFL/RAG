@@ -8,7 +8,6 @@ namespace Chatbot.Api.Controllers.Chat;
 [ApiController]
 [Authorize]
 [Route("api/v1/chat")]
-[Produces("application/json")]
 public sealed class ChatStreamingController : ChatControllerBase
 {
     private readonly IChatOrchestrator _chatOrchestrator;
@@ -22,8 +21,7 @@ public sealed class ChatStreamingController : ChatControllerBase
 
     [HttpPost("stream")]
     [EnableRateLimiting("chat-stream")]
-    [Produces("text/event-stream")]
-    public async Task Stream([FromBody] ChatRequestDto request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Stream([FromBody] ChatRequestDto request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Chat stream started for session {sessionId}", request.SessionId);
 
@@ -55,5 +53,7 @@ public sealed class ChatStreamingController : ChatControllerBase
             _logger.LogError(ex, "Error in stream for session {sessionId}", request.SessionId);
             await WriteStreamErrorAsync("stream_error", "An error occurred during streaming", cancellationToken);
         }
+
+        return new EmptyResult();
     }
 }

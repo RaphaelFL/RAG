@@ -21,6 +21,9 @@ Uso principal neste workspace:
 - teste rápido com APIs compatíveis
 - execução local quando o ambiente estiver configurado
 
+O fluxo local principal do produto passa por frontend -> Chatbot.Api -> Ollama.
+Ja `scripts/run-openclaude.ps1` continua sendo apenas a janela interativa opcional.
+
 O script `scripts/run-openclaude.ps1` agora sobe o OpenClaude em modo local por padrão, apontando para o Ollama via API OpenAI-compatible em `http://localhost:11434/v1`.
 
 Modelo default adotado neste workspace:
@@ -49,6 +52,9 @@ ollama pull llava
 
 ## Como subir junto do backend
 
+Suba o OpenClaude aqui apenas se voce realmente quiser a ferramenta externa paralela.
+Para testar o chat principal do app, basta subir backend + frontend + Ollama.
+
 ### Tudo em janelas separadas
 
 ```powershell
@@ -62,6 +68,8 @@ ollama pull llava
 ```powershell
 .\scripts\run-api.ps1
 ```
+
+Esse e o processo que atende o chat principal da aplicacao usando Ollama direto no backend.
 
 ### OpenClaude
 

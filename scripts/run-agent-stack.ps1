@@ -28,4 +28,5 @@ if ($started.Count -eq 0) {
 }
 
 Write-Host ("Processos iniciados em janelas separadas: {0}" -f ($started -join ', '))
-Write-Host 'Use -SkipOpenClaude se quiser subir apenas o backend.'
+Write-Host 'O backend iniciado por run-api.ps1 usa Ollama diretamente para o chat local.'
+Write-Host 'Use -SkipOpenClaude para nao abrir a janela extra do OpenClaude interativo opcional.'

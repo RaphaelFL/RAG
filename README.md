@@ -16,9 +16,15 @@ O projeto já implementa o fluxo local de MVP pedido pelos arquivos .ia:
 - prompt injection detection básica;
 - OCR com provider real por configuração;
 - jobs em background com worker hospedado;
-- execução lado a lado com OpenClaude usando Ollama via endpoint OpenAI-compatible;
+- chat local direto com Ollama via endpoint OpenAI-compatible;
 - OpenTelemetry, Serilog e Polly;
 - testes unitários, integração, componente e E2E.
+
+Observacao importante sobre o runtime local:
+
+- o chat principal da aplicacao usa o backend Chatbot.Api;
+- no fluxo local iniciado por `scripts/run-api.ps1`, o backend chama o Ollama diretamente pelo provider OpenAI-compatible;
+- no preset local atual, esse runtime local aponta para o Ollama em `http://localhost:11434/v1`.
 
 O que ainda é backlog estrutural:
 
@@ -55,7 +61,6 @@ O que ainda é backlog estrutural:
 - Ollama
 - SQL Server local ou Docker Compose
 - modelos Ollama `qwen2.5-coder:7b`, `nomic-embed-text` e `llava`
-- ripgrep (`rg`) recomendado para busca completa no OpenClaude
 - Docker opcional
 
 ## Como rodar
@@ -77,6 +82,7 @@ ollama pull llava
 ```
 
 O backend local usa por padrão o endpoint OpenAI-compatible do Ollama em `http://localhost:11434/v1`.
+Em outras palavras, com `scripts/run-api.ps1`: frontend -> Chatbot.Api -> Ollama.
 
 ### 3. Subir a API localmente
 
@@ -99,6 +105,8 @@ npm run dev
 O frontend sobe em http://localhost:3000 no ambiente local.
 
 ### 4.1. Rodar agentes externos ao lado do backend
+
+O OpenClaude continua opcional e serve apenas para uso interativo paralelo.
 
 Para subir OpenClaude em paralelo com a API local, use:
 

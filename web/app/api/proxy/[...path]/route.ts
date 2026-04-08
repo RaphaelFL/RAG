@@ -15,6 +15,10 @@ export async function GET(request: Request, context: RouteContext) {
   return handleProxyRequest(request, context);
 }
 
+export async function HEAD(request: Request, context: RouteContext) {
+  return handleProxyRequest(request, context);
+}
+
 export async function POST(request: Request, context: RouteContext) {
   return handleProxyRequest(request, context);
 }
@@ -82,6 +86,7 @@ function buildUpstreamHeaders(request: Request, environment: ReturnType<typeof n
   const requestHeaders = request.headers;
   const contentType = requestHeaders.get('content-type');
   const accept = requestHeaders.get('accept');
+  const range = requestHeaders.get('range');
 
   if (contentType) {
     headers.set('content-type', contentType);
@@ -89,6 +94,10 @@ function buildUpstreamHeaders(request: Request, environment: ReturnType<typeof n
 
   if (accept) {
     headers.set('accept', accept);
+  }
+
+  if (range) {
+    headers.set('range', range);
   }
 
   const forwardedAuthHeaders = buildForwardedAuthHeaders(environment);
@@ -113,6 +122,11 @@ function createProxyResponse(upstream: Response) {
   const cacheControl = upstream.headers.get('cache-control');
   const location = upstream.headers.get('location');
   const etag = upstream.headers.get('etag');
+  const contentDisposition = upstream.headers.get('content-disposition');
+  const contentLength = upstream.headers.get('content-length');
+  const contentRange = upstream.headers.get('content-range');
+  const acceptRanges = upstream.headers.get('accept-ranges');
+  const lastModified = upstream.headers.get('last-modified');
 
   if (contentType) {
     responseHeaders.set('content-type', contentType);
@@ -128,6 +142,26 @@ function createProxyResponse(upstream: Response) {
 
   if (etag) {
     responseHeaders.set('etag', etag);
+  }
+
+  if (contentDisposition) {
+    responseHeaders.set('content-disposition', contentDisposition);
+  }
+
+  if (contentLength) {
+    responseHeaders.set('content-length', contentLength);
+  }
+
+  if (contentRange) {
+    responseHeaders.set('content-range', contentRange);
+  }
+
+  if (acceptRanges) {
+    responseHeaders.set('accept-ranges', acceptRanges);
+  }
+
+  if (lastModified) {
+    responseHeaders.set('last-modified', lastModified);
   }
 
   if (contentType?.includes('text/event-stream')) {

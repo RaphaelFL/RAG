@@ -4,11 +4,18 @@ import type { AuthMode, RuntimeEnvironment, UserRole } from '@/types/app';
 export const RUNTIME_ENV_COOKIE_NAME = 'rag-runtime-environment';
 export const INTERNAL_PROXY_PREFIX = '/api/proxy';
 
-const USER_ROLES: UserRole[] = ['TenantUser', 'Analyst', 'TenantAdmin', 'PlatformAdmin', 'McpClient'];
-const AUTH_MODES: AuthMode[] = ['jwt', 'development-headers'];
+const USER_ROLES = new Set<UserRole>(['TenantUser', 'Analyst', 'TenantAdmin', 'PlatformAdmin', 'McpClient']);
+const AUTH_MODES = new Set<AuthMode>(['jwt', 'development-headers']);
 
 export function buildProxyUrl(path: string) {
   return `${INTERNAL_PROXY_PREFIX}${normalizePath(path)}`;
+}
+
+export function buildDocumentContentUrl(documentId: string, pageNumber?: number | null) {
+  const baseUrl = buildProxyUrl(`/api/v1/documents/${documentId}/content`);
+  return pageNumber && Number.isFinite(pageNumber) && pageNumber > 0
+    ? `${baseUrl}#page=${pageNumber}`
+    : baseUrl;
 }
 
 export function buildBackendUrl(baseUrl: string, path: string, search = '') {
@@ -68,13 +75,13 @@ function readString(value: unknown, fallback: string, preserveFallbackWhenEmpty 
 }
 
 function readAuthMode(value: unknown, fallback: AuthMode): AuthMode {
-  return typeof value === 'string' && AUTH_MODES.includes(value as AuthMode)
+  return typeof value === 'string' && AUTH_MODES.has(value as AuthMode)
     ? value as AuthMode
     : fallback;
 }
 
 function readUserRole(value: unknown, fallback: UserRole): UserRole {
-  return typeof value === 'string' && USER_ROLES.includes(value as UserRole)
+  return typeof value === 'string' && USER_ROLES.has(value as UserRole)
     ? value as UserRole
     : fallback;
 }
