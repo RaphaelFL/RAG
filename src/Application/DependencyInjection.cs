@@ -18,7 +18,8 @@ public static class ApplicationServiceRegistration
             var options = serviceProvider.GetService<IOptions<OperationalResilienceOptions>>()?.Value ?? new OperationalResilienceOptions();
             return CreateOperationalResiliencePipeline(options);
         });
-        services.AddSingleton<NoOpOperationalAuditStore>();
+        services.AddSingleton<NoOpOperationalAuditWriter>();
+        services.AddSingleton<NoOpOperationalAuditReader>();
         services.AddScoped<IChatRequestTemplateResolver, ChatRequestTemplateResolver>();
         services.AddSingleton<IChatEvidenceSelector, ChatEvidenceSelector>();
         services.AddSingleton<IChatStreamingSegmenter, ChatStreamingSegmenter>();
@@ -50,8 +51,8 @@ public static class ApplicationServiceRegistration
         services.AddScoped<IEmbeddingGenerationService, CurrentStateEmbeddingGenerationService>();
         services.AddScoped<IRetriever, CurrentStateRetrieverAdapter>();
         services.AddScoped<IReranker, CurrentStateRerankerAdapter>();
-        services.AddSingleton<IOperationalAuditWriter>(serviceProvider => serviceProvider.GetRequiredService<NoOpOperationalAuditStore>());
-        services.AddSingleton<IOperationalAuditReader>(serviceProvider => serviceProvider.GetRequiredService<NoOpOperationalAuditStore>());
+        services.AddSingleton<IOperationalAuditWriter>(serviceProvider => serviceProvider.GetRequiredService<NoOpOperationalAuditWriter>());
+        services.AddSingleton<IOperationalAuditReader>(serviceProvider => serviceProvider.GetRequiredService<NoOpOperationalAuditReader>());
         services.AddScoped<IPromptAssembler, CurrentStatePromptAssembler>();
         services.AddScoped<IFileSearchTool, CurrentStateFileSearchTool>();
         services.AddScoped<IWebSearchTool, DisabledWebSearchTool>();

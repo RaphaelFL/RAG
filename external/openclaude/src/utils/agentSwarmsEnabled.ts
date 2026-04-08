@@ -20,11 +20,20 @@ function isAgentTeamsFlagSet(): boolean {
  * External builds require both:
  * 1. Opt-in via CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var OR --agent-teams flag
  * 2. GrowthBook gate 'tengu_amber_flint' enabled (killswitch)
+ * Windows external builds stay disabled by default to avoid tmux/iTerm2 setup flows.
  */
 export function isAgentSwarmsEnabled(): boolean {
   // Ant: always on
   if (process.env.USER_TYPE === 'ant') {
     return true
+  }
+
+  // External Windows sessions are opt-out by default unless explicitly re-enabled.
+  if (
+    process.platform === 'win32' &&
+    !isEnvTruthy(process.env.CLAUDE_CODE_ALLOW_AGENT_TEAMS_ON_WINDOWS)
+  ) {
+    return false
   }
 
   // External: require opt-in via env var or --agent-teams flag

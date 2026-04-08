@@ -1,128 +1,42 @@
 using Chatbot.Application.Abstractions;
-using Chatbot.Application.Contracts;
-using Microsoft.Extensions.Options;
-
 namespace Chatbot.Infrastructure.Configuration;
 
-public sealed class RuntimeRagRuntimeSettings : IRagRuntimeSettings, IRagRuntimeAdministrationService
+public sealed class RuntimeRagRuntimeSettings : IRagRuntimeSettings
 {
-    private readonly object _sync = new();
-    private RagRuntimeSettingsDto _settings;
+    private readonly RagRuntimeSettingsStore _store;
 
-    public RuntimeRagRuntimeSettings(
-        IOptions<ChunkingOptions> chunkingOptions,
-        IOptions<RetrievalOptimizationOptions> retrievalOptions,
-        IOptions<CacheOptions> cacheOptions)
+    public RuntimeRagRuntimeSettings(RagRuntimeSettingsStore store)
     {
-        _settings = new RagRuntimeSettingsDto
-        {
-            DenseChunkSize = Math.Max(1, chunkingOptions.Value.DenseChunkSize),
-            DenseOverlap = Math.Max(0, chunkingOptions.Value.DenseOverlap),
-            NarrativeChunkSize = Math.Max(1, chunkingOptions.Value.NarrativeChunkSize),
-            NarrativeOverlap = Math.Max(0, chunkingOptions.Value.NarrativeOverlap),
-            MinimumChunkCharacters = Math.Max(1, chunkingOptions.Value.MinimumChunkCharacters),
-            RetrievalCandidateMultiplier = Math.Max(1, retrievalOptions.Value.CandidateMultiplier),
-            RetrievalMaxCandidateCount = Math.Max(1, retrievalOptions.Value.MaxCandidateCount),
-            MaxContextChunks = Math.Max(1, retrievalOptions.Value.MaxContextChunks),
-            MinimumRerankScore = retrievalOptions.Value.MinimumRerankScore,
-            ExactMatchBoost = retrievalOptions.Value.ExactMatchBoost,
-            TitleMatchBoost = retrievalOptions.Value.TitleMatchBoost,
-            FilterMatchBoost = retrievalOptions.Value.FilterMatchBoost,
-            RetrievalCacheTtlSeconds = Math.Max(1, cacheOptions.Value.RetrievalTtlSeconds),
-            ChatCompletionCacheTtlSeconds = Math.Max(1, cacheOptions.Value.ChatCompletionTtlSeconds),
-            EmbeddingCacheTtlHours = Math.Max(1, cacheOptions.Value.EmbeddingTtlHours)
-        };
+        _store = store;
     }
 
-    public int DenseChunkSize => Snapshot().DenseChunkSize;
+    public int DenseChunkSize => _store.GetSnapshot().DenseChunkSize;
 
-    public int DenseOverlap => Snapshot().DenseOverlap;
+    public int DenseOverlap => _store.GetSnapshot().DenseOverlap;
 
-    public int NarrativeChunkSize => Snapshot().NarrativeChunkSize;
+    public int NarrativeChunkSize => _store.GetSnapshot().NarrativeChunkSize;
 
-    public int NarrativeOverlap => Snapshot().NarrativeOverlap;
+    public int NarrativeOverlap => _store.GetSnapshot().NarrativeOverlap;
 
-    public int MinimumChunkCharacters => Snapshot().MinimumChunkCharacters;
+    public int MinimumChunkCharacters => _store.GetSnapshot().MinimumChunkCharacters;
 
-    public int RetrievalCandidateMultiplier => Snapshot().RetrievalCandidateMultiplier;
+    public int RetrievalCandidateMultiplier => _store.GetSnapshot().RetrievalCandidateMultiplier;
 
-    public int RetrievalMaxCandidateCount => Snapshot().RetrievalMaxCandidateCount;
+    public int RetrievalMaxCandidateCount => _store.GetSnapshot().RetrievalMaxCandidateCount;
 
-    public int MaxContextChunks => Snapshot().MaxContextChunks;
+    public int MaxContextChunks => _store.GetSnapshot().MaxContextChunks;
 
-    public double MinimumRerankScore => Snapshot().MinimumRerankScore;
+    public double MinimumRerankScore => _store.GetSnapshot().MinimumRerankScore;
 
-    public double ExactMatchBoost => Snapshot().ExactMatchBoost;
+    public double ExactMatchBoost => _store.GetSnapshot().ExactMatchBoost;
 
-    public double TitleMatchBoost => Snapshot().TitleMatchBoost;
+    public double TitleMatchBoost => _store.GetSnapshot().TitleMatchBoost;
 
-    public double FilterMatchBoost => Snapshot().FilterMatchBoost;
+    public double FilterMatchBoost => _store.GetSnapshot().FilterMatchBoost;
 
-    public TimeSpan RetrievalCacheTtl => TimeSpan.FromSeconds(Snapshot().RetrievalCacheTtlSeconds);
+    public TimeSpan RetrievalCacheTtl => TimeSpan.FromSeconds(_store.GetSnapshot().RetrievalCacheTtlSeconds);
 
-    public TimeSpan ChatCompletionCacheTtl => TimeSpan.FromSeconds(Snapshot().ChatCompletionCacheTtlSeconds);
+    public TimeSpan ChatCompletionCacheTtl => TimeSpan.FromSeconds(_store.GetSnapshot().ChatCompletionCacheTtlSeconds);
 
-    public TimeSpan EmbeddingCacheTtl => TimeSpan.FromHours(Snapshot().EmbeddingCacheTtlHours);
-
-    public RagRuntimeSettingsDto GetSettings()
-    {
-        return Snapshot();
-    }
-
-    public RagRuntimeSettingsDto UpdateSettings(UpdateRagRuntimeSettingsDto request)
-    {
-        lock (_sync)
-        {
-            _settings = new RagRuntimeSettingsDto
-            {
-                DenseChunkSize = Math.Max(1, request.DenseChunkSize),
-                DenseOverlap = Math.Max(0, request.DenseOverlap),
-                NarrativeChunkSize = Math.Max(1, request.NarrativeChunkSize),
-                NarrativeOverlap = Math.Max(0, request.NarrativeOverlap),
-                MinimumChunkCharacters = Math.Max(1, request.MinimumChunkCharacters),
-                RetrievalCandidateMultiplier = Math.Max(1, request.RetrievalCandidateMultiplier),
-                RetrievalMaxCandidateCount = Math.Max(1, request.RetrievalMaxCandidateCount),
-                MaxContextChunks = Math.Max(1, request.MaxContextChunks),
-                MinimumRerankScore = Math.Max(0, request.MinimumRerankScore),
-                ExactMatchBoost = Math.Max(0, request.ExactMatchBoost),
-                TitleMatchBoost = Math.Max(0, request.TitleMatchBoost),
-                FilterMatchBoost = Math.Max(0, request.FilterMatchBoost),
-                RetrievalCacheTtlSeconds = Math.Max(1, request.RetrievalCacheTtlSeconds),
-                ChatCompletionCacheTtlSeconds = Math.Max(1, request.ChatCompletionCacheTtlSeconds),
-                EmbeddingCacheTtlHours = Math.Max(1, request.EmbeddingCacheTtlHours)
-            };
-
-            return Clone(_settings);
-        }
-    }
-
-    private RagRuntimeSettingsDto Snapshot()
-    {
-        lock (_sync)
-        {
-            return Clone(_settings);
-        }
-    }
-
-    private static RagRuntimeSettingsDto Clone(RagRuntimeSettingsDto source)
-    {
-        return new RagRuntimeSettingsDto
-        {
-            DenseChunkSize = source.DenseChunkSize,
-            DenseOverlap = source.DenseOverlap,
-            NarrativeChunkSize = source.NarrativeChunkSize,
-            NarrativeOverlap = source.NarrativeOverlap,
-            MinimumChunkCharacters = source.MinimumChunkCharacters,
-            RetrievalCandidateMultiplier = source.RetrievalCandidateMultiplier,
-            RetrievalMaxCandidateCount = source.RetrievalMaxCandidateCount,
-            MaxContextChunks = source.MaxContextChunks,
-            MinimumRerankScore = source.MinimumRerankScore,
-            ExactMatchBoost = source.ExactMatchBoost,
-            TitleMatchBoost = source.TitleMatchBoost,
-            FilterMatchBoost = source.FilterMatchBoost,
-            RetrievalCacheTtlSeconds = source.RetrievalCacheTtlSeconds,
-            ChatCompletionCacheTtlSeconds = source.ChatCompletionCacheTtlSeconds,
-            EmbeddingCacheTtlHours = source.EmbeddingCacheTtlHours
-        };
-    }
+    public TimeSpan EmbeddingCacheTtl => TimeSpan.FromHours(_store.GetSnapshot().EmbeddingCacheTtlHours);
 }

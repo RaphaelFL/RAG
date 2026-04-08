@@ -92,6 +92,11 @@ export function isInITerm2(): boolean {
     return isInITerm2Cached
   }
 
+  if (process.platform !== 'darwin') {
+    isInITerm2Cached = false
+    return isInITerm2Cached
+  }
+
   // Check multiple indicators for iTerm2
   const termProgram = process.env.TERM_PROGRAM
   const hasItermSessionId = !!process.env.ITERM_SESSION_ID
@@ -115,6 +120,10 @@ export const IT2_COMMAND = 'it2'
  * 'session split' to fail later with no fallback.
  */
 export async function isIt2CliAvailable(): Promise<boolean> {
+  if (process.platform !== 'darwin') {
+    return false
+  }
+
   const result = await execFileNoThrow(IT2_COMMAND, ['session', 'list'])
   return result.code === 0
 }

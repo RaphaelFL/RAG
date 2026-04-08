@@ -3,7 +3,8 @@ param(
     [switch]$ForceLocalBuild,
     [string]$OllamaModel = "qwen2.5-coder:7b",
     [string]$OllamaBaseUrl = "http://localhost:11434/v1",
-    [switch]$SkipOllamaCheck
+    [switch]$SkipOllamaCheck,
+    [switch]$KeepKubeconfig
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,12 +38,29 @@ function Use-OllamaDefaults {
     }
 }
 
+function Set-LocalOpenClaudeEnvironment {
+    $env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = '0'
+
+    if (Test-Path Env:ITERM_SESSION_ID) {
+        Remove-Item Env:ITERM_SESSION_ID -ErrorAction SilentlyContinue
+    }
+
+    if ($env:TERM_PROGRAM -eq 'iTerm.app') {
+        Remove-Item Env:TERM_PROGRAM -ErrorAction SilentlyContinue
+    }
+
+    if (-not $KeepKubeconfig -and (Test-Path Env:KUBECONFIG)) {
+        Remove-Item Env:KUBECONFIG -ErrorAction SilentlyContinue
+    }
+}
+
 if (-not (Get-Command rg -ErrorAction SilentlyContinue)) {
     Write-Warning 'ripgrep (rg) nao foi encontrado. Algumas funcoes do OpenClaude podem falhar.'
 }
 
 function Start-NpxOpenClaude {
     Use-OllamaDefaults
+    Set-LocalOpenClaudeEnvironment
 
     if ($VersionOnly) {
         npx -y @gitlawb/openclaude --version
@@ -66,6 +84,7 @@ if (-not $bun) {
 Push-Location $openClaudePath
 try {
     Use-OllamaDefaults
+    Set-LocalOpenClaudeEnvironment
 
     if (-not (Test-Path (Join-Path $openClaudePath 'node_modules'))) {
         bun install

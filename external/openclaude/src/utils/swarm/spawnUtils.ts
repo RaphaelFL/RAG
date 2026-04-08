@@ -11,6 +11,7 @@ import {
 } from '../../bootstrap/state.js'
 import { quote } from '../bash/shellQuote.js'
 import { isInBundledMode } from '../bundledMode.js'
+import { isEnvTruthy } from '../envUtils.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getTeammateModeFromSnapshot } from './backends/teammateModeSnapshot.js'
 import { TEAMMATE_COMMAND_ENV_VAR } from './constants.js'
@@ -141,11 +142,19 @@ const TEAMMATE_ENV_VARS = [
 
 /**
  * Builds the `env KEY=VALUE ...` string for teammate spawn commands.
- * Always includes CLAUDECODE=1 and CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
+ * Always includes CLAUDECODE=1 and, outside Windows default sessions,
+ * CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
  * plus any provider/config env vars that are set in the current process.
  */
 export function buildInheritedEnvVars(): string {
-  const envVars = ['CLAUDECODE=1', 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1']
+  const envVars = ['CLAUDECODE=1']
+
+  if (
+    process.platform !== 'win32' ||
+    isEnvTruthy(process.env.CLAUDE_CODE_ALLOW_AGENT_TEAMS_ON_WINDOWS)
+  ) {
+    envVars.push('CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1')
+  }
 
   for (const key of TEAMMATE_ENV_VARS) {
     const value = process.env[key]

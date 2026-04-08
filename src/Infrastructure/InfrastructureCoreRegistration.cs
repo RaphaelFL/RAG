@@ -19,9 +19,9 @@ internal static class InfrastructureCoreRegistration
         services.AddSingleton<FileSystemOperationalAuditStore>();
         services.AddSingleton<IOperationalAuditWriter>(serviceProvider => serviceProvider.GetRequiredService<FileSystemOperationalAuditStore>());
         services.AddSingleton<IOperationalAuditReader>(serviceProvider => serviceProvider.GetRequiredService<FileSystemOperationalAuditStore>());
-        services.AddSingleton<RuntimeRagRuntimeSettings>();
-        services.AddSingleton<IRagRuntimeSettings>(serviceProvider => serviceProvider.GetRequiredService<RuntimeRagRuntimeSettings>());
-        services.AddSingleton<IRagRuntimeAdministrationService>(serviceProvider => serviceProvider.GetRequiredService<RuntimeRagRuntimeSettings>());
+        services.AddSingleton<RagRuntimeSettingsStore>();
+        services.AddSingleton<IRagRuntimeSettings, RuntimeRagRuntimeSettings>();
+        services.AddSingleton<IRagRuntimeAdministrationService, RuntimeRagRuntimeAdministrationService>();
         services.AddSingleton<IPromptTemplateRegistry, PromptTemplateRegistry>();
         services.AddSingleton<IPromptInjectionDetector, PromptInjectionDetector>();
         services.AddSingleton<IMalwareScanner, SignatureMalwareScanner>();
