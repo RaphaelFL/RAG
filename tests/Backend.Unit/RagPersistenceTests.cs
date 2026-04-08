@@ -121,6 +121,20 @@ public class RagPersistenceTests
         var embeddingProvider = new CountingEmbeddingProvider();
         var resiliencePipeline = new ResiliencePipelineBuilder().Build();
         var sut = new IngestionJobProcessor(
+            new IngestionBackgroundJobHandler(
+                new IngestionCommandFactory(),
+                new IngestionExtractionService(
+                    new NoOpDocumentTextExtractor(),
+                    new NoOpPromptInjectionDetector(),
+                    new NoOpSecurityAuditLogger(),
+                    resiliencePipeline),
+                new IngestionChunkEnricher(embeddingProvider, resiliencePipeline),
+                new IngestionDocumentStateService(catalog),
+                searchIndexGateway,
+                new NoOpChunkingStrategy(),
+                resiliencePipeline,
+                NullLogger<IngestionBackgroundJobHandler>.Instance),
+            new ReindexBackgroundJobHandler(
             new IngestionCommandFactory(),
             new IngestionExtractionService(
                 new NoOpDocumentTextExtractor(),
@@ -134,7 +148,7 @@ public class RagPersistenceTests
             catalog,
             new NoOpBlobStorageGateway(),
             resiliencePipeline,
-            NullLogger<IngestionJobProcessor>.Instance);
+                NullLogger<ReindexBackgroundJobHandler>.Instance));
 
         await sut.ProcessReindexAsync(new ReindexBackgroundJob
         {

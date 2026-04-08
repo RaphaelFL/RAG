@@ -35,4 +35,49 @@ public abstract class DocumentControllerBase : ControllerBase
             TraceId = HttpContext.TraceIdentifier
         });
     }
+
+    protected ObjectResult CreateAccessDenied(UnauthorizedAccessException exception)
+    {
+        return CreateError(StatusCodes.Status403Forbidden, "access_denied", exception.Message);
+    }
+
+    protected NotFoundObjectResult CreateDocumentNotFound(Guid documentId)
+    {
+        return NotFound(new ErrorResponseDto
+        {
+            Code = "document_not_found",
+            Message = $"Document {documentId} not found",
+            TraceId = HttpContext.TraceIdentifier
+        });
+    }
+
+    protected NotFoundObjectResult CreateChunkEmbeddingNotFound(string chunkId)
+    {
+        return NotFound(new ErrorResponseDto
+        {
+            Code = "chunk_embedding_not_found",
+            Message = $"Embedding for chunk {chunkId} was not found",
+            TraceId = HttpContext.TraceIdentifier
+        });
+    }
+
+    protected ConflictObjectResult CreateDocumentConflict(string message)
+    {
+        return Conflict(new ErrorResponseDto
+        {
+            Code = "document_conflict",
+            Message = message,
+            TraceId = HttpContext.TraceIdentifier
+        });
+    }
+
+    protected BadRequestObjectResult CreateInvalidFile(string message)
+    {
+        return BadRequest(new ErrorResponseDto
+        {
+            Code = "invalid_file",
+            Message = message,
+            TraceId = HttpContext.TraceIdentifier
+        });
+    }
 }

@@ -41,6 +41,10 @@ function parseProviderArg(): ProviderProfile | 'auto' {
   return 'auto'
 }
 
+function hasArg(name: string): boolean {
+  return process.argv.slice(2).includes(name)
+}
+
 async function resolveOllamaModel(
   argModel: string | null,
   argBaseUrl: string | null,
@@ -54,10 +58,15 @@ async function resolveOllamaModel(
 }
 
 async function main(): Promise<void> {
+  if (hasArg('--api-key')) {
+    console.error('--api-key is disabled for profile:init because command-line arguments can leak secrets via shell history and process lists.')
+    console.error('Set OPENAI_API_KEY, GEMINI_API_KEY, or CODEX_API_KEY in the environment before running this command.')
+    process.exit(1)
+  }
+
   const provider = parseProviderArg()
   const argModel = parseArg('--model')
   const argBaseUrl = parseArg('--base-url')
-  const argApiKey = parseArg('--api-key')
   const goal = normalizeRecommendationGoal(
     parseArg('--goal') || process.env.OPENCLAUDE_PROFILE_GOAL,
   )
@@ -80,12 +89,12 @@ async function main(): Promise<void> {
     const builtEnv = buildGeminiProfileEnv({
       model: argModel || null,
       baseUrl: argBaseUrl || null,
-      apiKey: argApiKey || null,
+      apiKey: null,
       processEnv: process.env,
     })
 
     if (!builtEnv) {
-      console.error('Gemini profile requires an API key. Use --api-key or set GEMINI_API_KEY.')
+      console.error('Gemini profile requires an API key. Set GEMINI_API_KEY or GOOGLE_API_KEY in the environment.')
       console.error('Get a free key at: https://aistudio.google.com/apikey')
       process.exit(1)
     }
@@ -124,15 +133,13 @@ async function main(): Promise<void> {
     const builtEnv = buildCodexProfileEnv({
       model: argModel,
       baseUrl: argBaseUrl,
-      apiKey: argApiKey || process.env.CODEX_API_KEY || null,
+      apiKey: process.env.CODEX_API_KEY || null,
       processEnv: process.env,
     })
 
     if (!builtEnv) {
       const credentials = resolveCodexApiCredentials(
-        argApiKey
-          ? { ...process.env, CODEX_API_KEY: argApiKey }
-          : process.env,
+        process.env,
       )
       const authHint = credentials.authPath
         ? ` or make sure ${credentials.authPath} exists`
@@ -151,12 +158,12 @@ async function main(): Promise<void> {
       goal,
       model: argModel || null,
       baseUrl: argBaseUrl || null,
-      apiKey: argApiKey || process.env.OPENAI_API_KEY || null,
+      apiKey: process.env.OPENAI_API_KEY || null,
       processEnv: process.env,
     })
 
     if (!builtEnv) {
-      console.error('OpenAI profile requires a real API key. Use --api-key or set OPENAI_API_KEY.')
+      console.error('OpenAI profile requires a real API key. Set OPENAI_API_KEY in the environment.')
       process.exit(1)
     }
 

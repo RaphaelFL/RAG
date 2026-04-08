@@ -11,25 +11,53 @@ namespace Backend.Unit;
 
 public class RetrievalServiceTests
 {
+    private static RetrievalService CreateSut(
+        CapturingSearchIndexGateway gateway,
+        IEmbeddingProvider? embeddingProvider = null,
+        InMemoryDocumentCatalogStub? catalog = null,
+        IDocumentAuthorizationService? documentAuthorizationService = null,
+        TestRequestContextAccessor? requestContext = null,
+        InMemoryApplicationCache? applicationCache = null,
+        StaticFeatureFlagService? featureFlagService = null,
+        StaticRagRuntimeSettings? runtimeSettings = null,
+        IOperationalAuditWriter? operationalAuditWriter = null)
+    {
+        embeddingProvider ??= new StaticEmbeddingProvider();
+        catalog ??= new InMemoryDocumentCatalogStub();
+        documentAuthorizationService ??= new AllowAllDocumentAuthorizationService();
+        requestContext ??= new TestRequestContextAccessor();
+        applicationCache ??= new InMemoryApplicationCache();
+        featureFlagService ??= new StaticFeatureFlagService();
+        runtimeSettings ??= new StaticRagRuntimeSettings();
+        operationalAuditWriter ??= new NoOpOperationalAuditStore();
+
+        return new RetrievalService(
+            gateway,
+            embeddingProvider,
+            applicationCache,
+            new RetrievalQueryPlanner(
+                featureFlagService,
+                runtimeSettings,
+                new RetrievalCacheKeyFactory(),
+                requestContext,
+                catalog),
+            new RetrievalResultAuthorizer(
+                catalog,
+                documentAuthorizationService,
+                requestContext),
+            new RetrievalChunkSelector(runtimeSettings),
+            new RetrievalAuditLogger(operationalAuditWriter, requestContext),
+            runtimeSettings,
+            NullLogger<RetrievalService>.Instance);
+    }
+
     [Fact]
     public async Task RetrieveAsync_ShouldAlwaysApplyTenantFilter_WhenTenantContextExists()
     {
         var tenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var gateway = new CapturingSearchIndexGateway();
         var requestContext = new TestRequestContextAccessor { TenantId = tenantId };
-        var sut = new RetrievalService(
-            gateway,
-            new StaticEmbeddingProvider(),
-            new InMemoryDocumentCatalogStub(),
-            new AllowAllDocumentAuthorizationService(),
-            requestContext,
-            new InMemoryApplicationCache(),
-            new StaticFeatureFlagService(),
-            new StaticRagRuntimeSettings(),
-            new RetrievalCacheKeyFactory(),
-            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
-            new NoOpOperationalAuditStore(),
-            NullLogger<RetrievalService>.Instance);
+        var sut = CreateSut(gateway, requestContext: requestContext);
 
         await sut.RetrieveAsync(new RetrievalQueryDto
         {
@@ -73,19 +101,11 @@ public class RetrievalServiceTests
             Title = "Manual"
         });
 
-        var sut = new RetrievalService(
+        var sut = CreateSut(
             gateway,
-            new StaticEmbeddingProvider(),
-            catalog,
-            new AllowAllDocumentAuthorizationService(),
-            new TestRequestContextAccessor { TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111") },
-            new InMemoryApplicationCache(),
-            new StaticFeatureFlagService { IsSemanticRankingEnabled = false },
-            new StaticRagRuntimeSettings(),
-            new RetrievalCacheKeyFactory(),
-            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
-            new NoOpOperationalAuditStore(),
-            NullLogger<RetrievalService>.Instance);
+            catalog: catalog,
+            requestContext: new TestRequestContextAccessor { TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111") },
+            featureFlagService: new StaticFeatureFlagService { IsSemanticRankingEnabled = false });
 
         var result = await sut.RetrieveAsync(new RetrievalQueryDto
         {
@@ -125,19 +145,10 @@ public class RetrievalServiceTests
             Title = "Politica de Viagens"
         });
 
-        var sut = new RetrievalService(
+        var sut = CreateSut(
             gateway,
-            new StaticEmbeddingProvider(),
-            catalog,
-            new AllowAllDocumentAuthorizationService(),
-            new TestRequestContextAccessor { TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111") },
-            new InMemoryApplicationCache(),
-            new StaticFeatureFlagService(),
-            new StaticRagRuntimeSettings(),
-            new RetrievalCacheKeyFactory(),
-            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
-            new NoOpOperationalAuditStore(),
-            NullLogger<RetrievalService>.Instance);
+            catalog: catalog,
+            requestContext: new TestRequestContextAccessor { TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111") });
 
         await sut.RetrieveAsync(new RetrievalQueryDto
         {
@@ -186,19 +197,10 @@ public class RetrievalServiceTests
             Title = "Manual Operacional"
         });
 
-        var sut = new RetrievalService(
+        var sut = CreateSut(
             gateway,
-            new StaticEmbeddingProvider(),
-            catalog,
-            new AllowAllDocumentAuthorizationService(),
-            new TestRequestContextAccessor { TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111") },
-            new InMemoryApplicationCache(),
-            new StaticFeatureFlagService(),
-            new StaticRagRuntimeSettings(),
-            new RetrievalCacheKeyFactory(),
-            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
-            new NoOpOperationalAuditStore(),
-            NullLogger<RetrievalService>.Instance);
+            catalog: catalog,
+            requestContext: new TestRequestContextAccessor { TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111") });
 
         var result = await sut.RetrieveAsync(new RetrievalQueryDto
         {
@@ -241,19 +243,10 @@ public class RetrievalServiceTests
         });
         var embeddingProvider = new StaticEmbeddingProvider(new float[] { 0.11f, 0.22f, 0.33f });
 
-        var sut = new RetrievalService(
+        var sut = CreateSut(
             gateway,
-            embeddingProvider,
-            catalog,
-            new AllowAllDocumentAuthorizationService(),
-            new TestRequestContextAccessor(),
-            new InMemoryApplicationCache(),
-            new StaticFeatureFlagService(),
-            new StaticRagRuntimeSettings(),
-            new RetrievalCacheKeyFactory(),
-            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
-            new NoOpOperationalAuditStore(),
-            NullLogger<RetrievalService>.Instance);
+            embeddingProvider: embeddingProvider,
+            catalog: catalog);
 
         await sut.RetrieveAsync(new RetrievalQueryDto
         {
@@ -295,19 +288,10 @@ public class RetrievalServiceTests
             Version = 1,
             UpdatedAtUtc = new DateTime(2026, 4, 1, 12, 0, 0, DateTimeKind.Utc)
         });
-        var sut = new RetrievalService(
+        var sut = CreateSut(
             gateway,
-            new StaticEmbeddingProvider(),
-            catalog,
-            new AllowAllDocumentAuthorizationService(),
-            new TestRequestContextAccessor { TenantId = tenantId },
-            new InMemoryApplicationCache(),
-            new StaticFeatureFlagService(),
-            new StaticRagRuntimeSettings(),
-            new RetrievalCacheKeyFactory(),
-            new RetrievalChunkSelector(new StaticRagRuntimeSettings()),
-            new NoOpOperationalAuditStore(),
-            NullLogger<RetrievalService>.Instance);
+            catalog: catalog,
+            requestContext: new TestRequestContextAccessor { TenantId = tenantId });
 
         var query = new RetrievalQueryDto
         {

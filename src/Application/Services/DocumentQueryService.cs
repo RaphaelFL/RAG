@@ -1,11 +1,27 @@
+using Chatbot.Application.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Chatbot.Application.Services;
 
 public sealed class DocumentQueryService : IDocumentQueryService
 {
     private readonly IDocumentCatalog _documentCatalog;
     private readonly ISearchIndexGateway _indexGateway;
-    private readonly DocumentQueryAccessGuard _accessGuard;
-    private readonly DocumentInspectionBuilder _inspectionBuilder = new();
+    private readonly IDocumentQueryAccessGuard _accessGuard;
+    private readonly IDocumentInspectionBuilder _inspectionBuilder;
+
+    [ActivatorUtilitiesConstructor]
+    public DocumentQueryService(
+        IDocumentCatalog documentCatalog,
+        ISearchIndexGateway indexGateway,
+        IDocumentQueryAccessGuard accessGuard,
+        IDocumentInspectionBuilder inspectionBuilder)
+    {
+        _documentCatalog = documentCatalog;
+        _indexGateway = indexGateway;
+        _accessGuard = accessGuard;
+        _inspectionBuilder = inspectionBuilder;
+    }
 
     public DocumentQueryService(
         IDocumentCatalog documentCatalog,
@@ -13,10 +29,12 @@ public sealed class DocumentQueryService : IDocumentQueryService
         IDocumentAuthorizationService documentAuthorizationService,
         ISearchIndexGateway indexGateway,
         ISecurityAuditLogger securityAuditLogger)
+        : this(
+            documentCatalog,
+            indexGateway,
+            new DocumentQueryAccessGuard(requestContextAccessor, documentAuthorizationService, securityAuditLogger),
+            new DocumentInspectionBuilder())
     {
-        _documentCatalog = documentCatalog;
-        _indexGateway = indexGateway;
-        _accessGuard = new DocumentQueryAccessGuard(requestContextAccessor, documentAuthorizationService, securityAuditLogger);
     }
 
     public Task<IReadOnlyList<DocumentDetailsDto>> ListDocumentsAsync(CancellationToken ct)

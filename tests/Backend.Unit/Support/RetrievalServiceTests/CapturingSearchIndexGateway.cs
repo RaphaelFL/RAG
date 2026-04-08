@@ -15,6 +15,8 @@ internal sealed class CapturingSearchIndexGateway : ISearchIndexGateway
 
     public List<SearchResultDto> Results { get; set; } = new();
 
+    public List<DocumentChunkIndexDto> DocumentChunks { get; set; } = new();
+
     public int CallCount { get; private set; }
 
     public Task DeleteDocumentAsync(Guid documentId, CancellationToken ct)
@@ -24,7 +26,7 @@ internal sealed class CapturingSearchIndexGateway : ISearchIndexGateway
 
     public Task<List<DocumentChunkIndexDto>> GetDocumentChunksAsync(Guid documentId, CancellationToken ct)
     {
-        return Task.FromResult(new List<DocumentChunkIndexDto>());
+        return Task.FromResult(DocumentChunks.ToList());
     }
 
     public Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)

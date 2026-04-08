@@ -201,12 +201,12 @@ async function main(): Promise<void> {
   }
 
   if (profile === 'gemini' && !env.GEMINI_API_KEY) {
-    console.error('GEMINI_API_KEY is required for gemini profile. Run: bun run profile:init -- --provider gemini --api-key <key>')
+    console.error('GEMINI_API_KEY is required for gemini profile. Set GEMINI_API_KEY or GOOGLE_API_KEY in the environment, then rerun bun run profile:init -- --provider gemini')
     process.exit(1)
   }
 
   if (profile === 'openai' && (!env.OPENAI_API_KEY || env.OPENAI_API_KEY === 'SUA_CHAVE')) {
-    console.error('OPENAI_API_KEY is required for openai profile and cannot be SUA_CHAVE. Run: bun run profile:init -- --provider openai --api-key <key>')
+    console.error('OPENAI_API_KEY is required for openai profile and cannot be SUA_CHAVE. Set OPENAI_API_KEY in the environment, then rerun bun run profile:init -- --provider openai')
     process.exit(1)
   }
 

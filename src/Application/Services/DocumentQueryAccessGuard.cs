@@ -1,6 +1,8 @@
+using Chatbot.Application.Abstractions;
+
 namespace Chatbot.Application.Services;
 
-internal sealed class DocumentQueryAccessGuard
+internal sealed class DocumentQueryAccessGuard : IDocumentQueryAccessGuard
 {
     private readonly IRequestContextAccessor _requestContextAccessor;
     private readonly IDocumentAuthorizationService _documentAuthorizationService;

@@ -1,8 +1,8 @@
 using Chatbot.Application.Contracts;
 
-namespace Chatbot.Application.Services;
+namespace Chatbot.Application.Abstractions;
 
-internal sealed class PreparedChatTurn
+public sealed class PreparedChatTurn
 {
     public string ResponseMessage { get; init; } = string.Empty;
     public List<CitationDto> Citations { get; init; } = new();

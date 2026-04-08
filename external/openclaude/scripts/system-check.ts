@@ -354,7 +354,6 @@ function checkOllamaProcessorMode(): CheckResult {
   const result = spawnSync('ollama', ['ps'], {
     cwd: process.cwd(),
     encoding: 'utf8',
-    shell: true,
   })
 
   if (result.status !== 0) {

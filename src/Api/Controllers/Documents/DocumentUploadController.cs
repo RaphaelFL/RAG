@@ -104,22 +104,12 @@ public sealed class DocumentUploadController : DocumentControllerBase
         catch (DuplicateDocumentException ex)
         {
             _securityAuditLogger.LogFileRejected(file.FileName, ex.Message);
-            return Conflict(new ErrorResponseDto
-            {
-                Code = "document_conflict",
-                Message = ex.Message,
-                TraceId = HttpContext.TraceIdentifier
-            });
+            return CreateDocumentConflict(ex.Message);
         }
         catch (InvalidOperationException ex)
         {
             _securityAuditLogger.LogFileRejected(file.FileName, ex.Message);
-            return BadRequest(new ErrorResponseDto
-            {
-                Code = "invalid_file",
-                Message = ex.Message,
-                TraceId = HttpContext.TraceIdentifier
-            });
+            return CreateInvalidFile(ex.Message);
         }
         catch (Exception ex)
         {

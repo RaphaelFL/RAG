@@ -2,7 +2,7 @@ using Chatbot.Application.Abstractions;
 
 namespace Chatbot.Application.Services;
 
-internal sealed class ChatTurnPersister
+internal sealed class ChatTurnPersister : IChatTurnPersister
 {
     private readonly IChatSessionStore _chatSessionStore;
     private readonly IRequestContextAccessor _requestContextAccessor;

@@ -1,6 +1,8 @@
+using Chatbot.Application.Abstractions;
+
 namespace Chatbot.Application.Services;
 
-internal sealed class DocumentInspectionBuilder
+internal sealed class DocumentInspectionBuilder : IDocumentInspectionBuilder
 {
     public DocumentInspectionDto Build(
         DocumentCatalogEntry document,

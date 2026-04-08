@@ -1,51 +1,39 @@
 using Chatbot.Application.Abstractions;
 using Chatbot.Application.Observability;
-using System.Text.Json;
 
 namespace Chatbot.Application.Services;
 
-public class RetrievalService : IRetrievalService
+public sealed class RetrievalService : IRetrievalService
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
-
     private readonly ISearchIndexGateway _indexGateway;
     private readonly IEmbeddingProvider _embeddingProvider;
-    private readonly IDocumentCatalog _documentCatalog;
-    private readonly IDocumentAuthorizationService _documentAuthorizationService;
-    private readonly IRequestContextAccessor _requestContextAccessor;
     private readonly IApplicationCache _applicationCache;
-    private readonly IFeatureFlagService _featureFlagService;
-    private readonly IRagRuntimeSettings _ragRuntimeSettings;
-    private readonly IRetrievalCacheKeyFactory _retrievalCacheKeyFactory;
+    private readonly IRetrievalQueryPlanner _retrievalQueryPlanner;
+    private readonly IRetrievalResultAuthorizer _retrievalResultAuthorizer;
     private readonly IRetrievalChunkSelector _retrievalChunkSelector;
-    private readonly IOperationalAuditWriter _operationalAuditWriter;
+    private readonly IRetrievalAuditLogger _retrievalAuditLogger;
+    private readonly IRagRuntimeSettings _ragRuntimeSettings;
     private readonly ILogger<RetrievalService> _logger;
 
     public RetrievalService(
         ISearchIndexGateway indexGateway,
         IEmbeddingProvider embeddingProvider,
-        IDocumentCatalog documentCatalog,
-        IDocumentAuthorizationService documentAuthorizationService,
-        IRequestContextAccessor requestContextAccessor,
         IApplicationCache applicationCache,
-        IFeatureFlagService featureFlagService,
-        IRagRuntimeSettings ragRuntimeSettings,
-        IRetrievalCacheKeyFactory retrievalCacheKeyFactory,
+        IRetrievalQueryPlanner retrievalQueryPlanner,
+        IRetrievalResultAuthorizer retrievalResultAuthorizer,
         IRetrievalChunkSelector retrievalChunkSelector,
-        IOperationalAuditWriter operationalAuditWriter,
+        IRetrievalAuditLogger retrievalAuditLogger,
+        IRagRuntimeSettings ragRuntimeSettings,
         ILogger<RetrievalService> logger)
     {
         _indexGateway = indexGateway;
         _embeddingProvider = embeddingProvider;
-        _documentCatalog = documentCatalog;
-        _documentAuthorizationService = documentAuthorizationService;
-        _requestContextAccessor = requestContextAccessor;
         _applicationCache = applicationCache;
-        _featureFlagService = featureFlagService;
-        _ragRuntimeSettings = ragRuntimeSettings;
-        _retrievalCacheKeyFactory = retrievalCacheKeyFactory;
+        _retrievalQueryPlanner = retrievalQueryPlanner;
+        _retrievalResultAuthorizer = retrievalResultAuthorizer;
         _retrievalChunkSelector = retrievalChunkSelector;
-        _operationalAuditWriter = operationalAuditWriter;
+        _retrievalAuditLogger = retrievalAuditLogger;
+        _ragRuntimeSettings = ragRuntimeSettings;
         _logger = logger;
     }
 
@@ -55,30 +43,22 @@ public class RetrievalService : IRetrievalService
         using var activity = ChatbotTelemetry.ActivitySource.StartActivity("retrieval.query");
         activity?.SetTag("retrieval.top_k", query.TopK);
 
-        var filters = new FileSearchFilterDto
-        {
-            DocumentIds = query.DocumentIds,
-            Tags = query.Tags,
-            Categories = query.Categories,
-            ContentTypes = query.ContentTypes,
-            Sources = query.Sources,
-            TenantId = _requestContextAccessor.TenantId
-        };
-        var requestedTopK = Math.Max(1, query.TopK);
-        var candidateCount = Math.Min(
-            _ragRuntimeSettings.RetrievalMaxCandidateCount,
-            Math.Max(requestedTopK, requestedTopK * _ragRuntimeSettings.RetrievalCandidateMultiplier));
-        var semanticRankingEnabled = _featureFlagService.IsSemanticRankingEnabled && query.SemanticRanking;
-        var cacheKey = _retrievalCacheKeyFactory.Build(query.Query, requestedTopK, candidateCount, semanticRankingEnabled, filters, _requestContextAccessor, _documentCatalog);
+        var plan = _retrievalQueryPlanner.Create(query);
 
-        var cached = await _applicationCache.GetAsync<RetrievalResultDto>(cacheKey, ct);
+        var cached = await _applicationCache.GetAsync<RetrievalResultDto>(plan.CacheKey, ct);
         if (cached is not null)
         {
-            await WriteRetrievalLogAsync(query, requestedTopK, cached, filters, new Dictionary<string, object?>
+            await _retrievalAuditLogger.WriteAsync(new RetrievalAuditEntry
             {
-                ["candidateCount"] = candidateCount,
-                ["semanticRankingEnabled"] = semanticRankingEnabled,
-                ["cacheHit"] = true
+                Query = query,
+                Plan = plan,
+                Result = cached,
+                Diagnostics = new Dictionary<string, object?>
+                {
+                    ["candidateCount"] = plan.CandidateCount,
+                    ["semanticRankingEnabled"] = plan.SemanticRankingEnabled,
+                    ["cacheHit"] = true
+                }
             }, ct);
             return cached;
         }
@@ -88,63 +68,36 @@ public class RetrievalService : IRetrievalService
             : await _embeddingProvider.CreateEmbeddingAsync(query.Query, null, ct);
 
         var startTime = DateTime.UtcNow;
-        var results = await _indexGateway.HybridSearchAsync(query.Query, queryEmbedding, candidateCount, filters, ct);
+        var results = await _indexGateway.HybridSearchAsync(query.Query, queryEmbedding, plan.CandidateCount, plan.Filters, ct);
         var elapsed = DateTime.UtcNow - startTime;
         ChatbotTelemetry.RetrievalLatencyMs.Record(elapsed.TotalMilliseconds);
 
-        var authorizedResults = results
-            .Where(result =>
-            {
-                var document = _documentCatalog.Get(result.DocumentId);
-                return document is not null && _documentAuthorizationService.CanAccess(
-                    document,
-                    _requestContextAccessor.TenantId,
-                    _requestContextAccessor.UserId,
-                    _requestContextAccessor.UserRole);
-            })
-            .ToList();
+        var authorizedResults = _retrievalResultAuthorizer.Authorize(results);
 
-        var selectedChunks = _retrievalChunkSelector.Select(query.Query, authorizedResults, filters, requestedTopK);
+        var selectedChunks = _retrievalChunkSelector.Select(query.Query, authorizedResults, plan.Filters, plan.RequestedTopK);
 
         var retrievalResult = new RetrievalResultDto
         {
             Chunks = selectedChunks.ToList(),
-            RetrievalStrategy = semanticRankingEnabled ? "hybrid-semantic-reranked" : "hybrid-reranked",
+            RetrievalStrategy = plan.SemanticRankingEnabled ? "hybrid-semantic-reranked" : "hybrid-reranked",
             LatencyMs = (long)elapsed.TotalMilliseconds
         };
 
-        await _applicationCache.SetAsync(cacheKey, retrievalResult, _ragRuntimeSettings.RetrievalCacheTtl, ct);
-        await WriteRetrievalLogAsync(query, requestedTopK, retrievalResult, filters, new Dictionary<string, object?>
+        await _applicationCache.SetAsync(plan.CacheKey, retrievalResult, _ragRuntimeSettings.RetrievalCacheTtl, ct);
+        await _retrievalAuditLogger.WriteAsync(new RetrievalAuditEntry
         {
-            ["candidateCount"] = candidateCount,
-            ["semanticRankingEnabled"] = semanticRankingEnabled,
-            ["authorizedResults"] = authorizedResults.Count,
-            ["rerankedResults"] = selectedChunks.Count,
-            ["cacheHit"] = false
+            Query = query,
+            Plan = plan,
+            Result = retrievalResult,
+            Diagnostics = new Dictionary<string, object?>
+            {
+                ["candidateCount"] = plan.CandidateCount,
+                ["semanticRankingEnabled"] = plan.SemanticRankingEnabled,
+                ["authorizedResults"] = authorizedResults.Count,
+                ["rerankedResults"] = selectedChunks.Count,
+                ["cacheHit"] = false
+            }
         }, ct);
         return retrievalResult;
     }
-
-    private Task WriteRetrievalLogAsync(
-        RetrievalQueryDto query,
-        int requestedTopK,
-        RetrievalResultDto retrievalResult,
-        FileSearchFilterDto filters,
-        Dictionary<string, object?> diagnostics,
-        CancellationToken ct)
-    {
-        return _operationalAuditWriter.WriteRetrievalLogAsync(new RetrievalLogRecord
-        {
-            RetrievalLogId = Guid.NewGuid(),
-            TenantId = _requestContextAccessor.TenantId ?? Guid.Empty,
-            QueryText = query.Query,
-            Strategy = retrievalResult.RetrievalStrategy,
-            RequestedTopK = requestedTopK,
-            ReturnedTopK = retrievalResult.Chunks.Count,
-            FiltersJson = JsonSerializer.Serialize(filters, SerializerOptions),
-            DiagnosticsJson = JsonSerializer.Serialize(diagnostics, SerializerOptions),
-            CreatedAtUtc = DateTime.UtcNow
-        }, ct);
-    }
-
 }

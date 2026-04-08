@@ -5,6 +5,7 @@ using Chatbot.Infrastructure;
 using Chatbot.Ingestion;
 using Chatbot.Mcp;
 using Chatbot.Retrieval;
+using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,6 +23,21 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 builder.Host.UseSerilog();
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor
+        | ForwardedHeaders.XForwardedProto
+        | ForwardedHeaders.XForwardedHost;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(30);
+    options.IncludeSubDomains = false;
+    options.Preload = false;
+});
 
 builder.Services.AddApiPresentation(builder.Environment, builder.Configuration);
 builder.Services.AddApiOptions(builder.Configuration);

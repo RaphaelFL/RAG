@@ -43,16 +43,11 @@ public sealed class DocumentReindexController : DocumentControllerBase
         }
         catch (KeyNotFoundException)
         {
-            return NotFound(new ErrorResponseDto
-            {
-                Code = "document_not_found",
-                Message = $"Document {documentId} not found",
-                TraceId = HttpContext.TraceIdentifier
-            });
+            return CreateDocumentNotFound(documentId);
         }
         catch (UnauthorizedAccessException ex)
         {
-            return CreateError(StatusCodes.Status403Forbidden, "access_denied", ex.Message);
+            return CreateAccessDenied(ex);
         }
     }
 
@@ -72,7 +67,7 @@ public sealed class DocumentReindexController : DocumentControllerBase
         }
         catch (UnauthorizedAccessException ex)
         {
-            return CreateError(StatusCodes.Status403Forbidden, "access_denied", ex.Message);
+            return CreateAccessDenied(ex);
         }
     }
 }

@@ -1,5 +1,6 @@
 using Chatbot.Application.Abstractions;
 using Chatbot.Application.Observability;
+using Microsoft.Extensions.DependencyInjection;
 using Polly;
 
 namespace Chatbot.Application.Services;
@@ -9,8 +10,8 @@ public class ChatOrchestratorService : IChatOrchestrator
     private readonly IAgenticChatPlanner _agenticChatPlanner;
     private readonly IChatRequestTemplateResolver _chatRequestTemplateResolver;
     private readonly IChatStreamingSegmenter _chatStreamingSegmenter;
-    private readonly ChatTurnPreparer _chatTurnPreparer;
-    private readonly ChatTurnPersister _chatTurnPersister;
+    private readonly IChatTurnPreparer _chatTurnPreparer;
+    private readonly IChatTurnPersister _chatTurnPersister;
     private readonly ILogger<ChatOrchestratorService> _logger;
 
     public ChatOrchestratorService(
@@ -34,26 +35,32 @@ public class ChatOrchestratorService : IChatOrchestrator
             chatRequestTemplateResolver,
             chatStreamingSegmenter,
             new ChatTurnPreparer(
-                retrievalService,
-                citationAssembler,
-                chatCompletionProvider,
-                chatEvidenceSelector,
-                chatCompletionCacheKeyFactory,
-                applicationCache,
-                featureFlagService,
-                ragRuntimeSettings,
-                resiliencePipeline),
+                new ChatRetrievalContextBuilder(
+                    retrievalService,
+                    citationAssembler,
+                    chatEvidenceSelector,
+                    featureFlagService,
+                    ragRuntimeSettings,
+                    resiliencePipeline),
+                new ChatCompletionResponseBuilder(
+                    chatCompletionProvider,
+                    chatCompletionCacheKeyFactory,
+                    applicationCache,
+                    ragRuntimeSettings,
+                    resiliencePipeline),
+                new PreparedChatTurnFactory()),
             new ChatTurnPersister(chatSessionStore, requestContextAccessor),
             logger)
     {
     }
 
-    internal ChatOrchestratorService(
+    [ActivatorUtilitiesConstructor]
+    public ChatOrchestratorService(
         IAgenticChatPlanner agenticChatPlanner,
         IChatRequestTemplateResolver chatRequestTemplateResolver,
         IChatStreamingSegmenter chatStreamingSegmenter,
-        ChatTurnPreparer chatTurnPreparer,
-        ChatTurnPersister chatTurnPersister,
+        IChatTurnPreparer chatTurnPreparer,
+        IChatTurnPersister chatTurnPersister,
         ILogger<ChatOrchestratorService> logger)
     {
         _agenticChatPlanner = agenticChatPlanner;

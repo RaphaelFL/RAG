@@ -37,19 +37,14 @@ public sealed class DocumentQueryController : DocumentControllerBase
             var document = await _documentQueryService.GetDocumentAsync(documentId, cancellationToken);
             if (document is null)
             {
-                return NotFound(new ErrorResponseDto
-                {
-                    Code = "document_not_found",
-                    Message = $"Document {documentId} not found",
-                    TraceId = HttpContext.TraceIdentifier
-                });
+                return CreateDocumentNotFound(documentId);
             }
 
             return Ok(document);
         }
         catch (UnauthorizedAccessException ex)
         {
-            return CreateError(StatusCodes.Status403Forbidden, "access_denied", ex.Message);
+            return CreateAccessDenied(ex);
         }
     }
 
@@ -70,19 +65,14 @@ public sealed class DocumentQueryController : DocumentControllerBase
             var inspection = await _documentQueryService.GetDocumentInspectionAsync(documentId, search, page, pageSize, cancellationToken);
             if (inspection is null)
             {
-                return NotFound(new ErrorResponseDto
-                {
-                    Code = "document_not_found",
-                    Message = $"Document {documentId} not found",
-                    TraceId = HttpContext.TraceIdentifier
-                });
+                return CreateDocumentNotFound(documentId);
             }
 
             return Ok(inspection);
         }
         catch (UnauthorizedAccessException ex)
         {
-            return CreateError(StatusCodes.Status403Forbidden, "access_denied", ex.Message);
+            return CreateAccessDenied(ex);
         }
     }
 
@@ -101,19 +91,14 @@ public sealed class DocumentQueryController : DocumentControllerBase
             var embedding = await _documentQueryService.GetDocumentChunkEmbeddingAsync(documentId, chunkId, cancellationToken);
             if (embedding is null)
             {
-                return NotFound(new ErrorResponseDto
-                {
-                    Code = "chunk_embedding_not_found",
-                    Message = $"Embedding for chunk {chunkId} was not found",
-                    TraceId = HttpContext.TraceIdentifier
-                });
+                return CreateChunkEmbeddingNotFound(chunkId);
             }
 
             return Ok(embedding);
         }
         catch (UnauthorizedAccessException ex)
         {
-            return CreateError(StatusCodes.Status403Forbidden, "access_denied", ex.Message);
+            return CreateAccessDenied(ex);
         }
     }
 }

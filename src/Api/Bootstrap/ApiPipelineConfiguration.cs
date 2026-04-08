@@ -1,4 +1,5 @@
 using Chatbot.Api.Middleware;
+using Microsoft.AspNetCore.HttpOverrides;
 
 namespace Chatbot.Api.Bootstrap;
 
@@ -6,6 +7,8 @@ public static class ApiPipelineConfiguration
 {
     public static WebApplication ConfigureApiPipeline(this WebApplication app)
     {
+        app.UseForwardedHeaders();
+
         if (app.Environment.IsDevelopment())
         {
             app.UseSwagger();
@@ -13,6 +16,7 @@ public static class ApiPipelineConfiguration
         }
         else
         {
+            app.UseHsts();
             app.UseHttpsRedirection();
         }
 
