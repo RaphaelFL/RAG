@@ -278,6 +278,4 @@ public sealed class ApplicationCache : IApplicationCache, IDisposable
 
         return "generic";
     }
-
-    private sealed record LocalCacheEntry(string Payload, DateTime ExpiresAtUtc);
 }

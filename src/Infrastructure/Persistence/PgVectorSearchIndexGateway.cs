@@ -1,22 +1,16 @@
-using System.Diagnostics;
 using Chatbot.Application.Abstractions;
 using Chatbot.Application.Configuration;
-using Chatbot.Application.Observability;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Npgsql;
-using NpgsqlTypes;
 
 namespace Chatbot.Infrastructure.Persistence;
 
 public sealed class PgVectorSearchIndexGateway : ISearchIndexGateway
 {
-    private readonly ILogger<PgVectorSearchIndexGateway> _logger;
-    private readonly ISearchIndexGateway _fallbackGateway;
-    private readonly PgVectorSqlBuilder _sqlBuilder;
-    private readonly PgVectorCommandParameterBinder _parameterBinder;
-    private readonly PgVectorResultMapper _resultMapper;
-    private readonly PgVectorDataSourceProvider _dataSourceProvider;
+    private readonly PgVectorChunkIndexOperation _chunkIndexOperation;
+    private readonly PgVectorChunkReadOperation _chunkReadOperation;
+    private readonly PgVectorHybridSearchOperation _hybridSearchOperation;
+    private readonly PgVectorDocumentDeleteOperation _documentDeleteOperation;
 
     public PgVectorSearchIndexGateway(
         IOptions<VectorStoreOptions> options,
@@ -30,173 +24,71 @@ public sealed class PgVectorSearchIndexGateway : ISearchIndexGateway
         VectorStoreOptions options,
         ILogger<PgVectorSearchIndexGateway> logger,
         ISearchIndexGateway fallbackGateway)
+        : this(CreateOperations(options, logger, fallbackGateway))
+    {
+    }
+
+    private PgVectorSearchIndexGateway(
+        (PgVectorChunkIndexOperation ChunkIndexOperation,
+        PgVectorChunkReadOperation ChunkReadOperation,
+        PgVectorHybridSearchOperation HybridSearchOperation,
+        PgVectorDocumentDeleteOperation DocumentDeleteOperation) operations)
         : this(
-            logger,
-            fallbackGateway,
-            new PgVectorSqlBuilder(options),
-            new PgVectorCommandParameterBinder(options),
-            new PgVectorResultMapper(),
-            new PgVectorDataSourceProvider(options, logger, new PgVectorSqlBuilder(options)))
+            operations.ChunkIndexOperation,
+            operations.ChunkReadOperation,
+            operations.HybridSearchOperation,
+            operations.DocumentDeleteOperation)
     {
     }
 
     internal PgVectorSearchIndexGateway(
-        ILogger<PgVectorSearchIndexGateway> logger,
-        ISearchIndexGateway fallbackGateway,
-        PgVectorSqlBuilder sqlBuilder,
-        PgVectorCommandParameterBinder parameterBinder,
-        PgVectorResultMapper resultMapper,
-        PgVectorDataSourceProvider dataSourceProvider)
+        PgVectorChunkIndexOperation chunkIndexOperation,
+        PgVectorChunkReadOperation chunkReadOperation,
+        PgVectorHybridSearchOperation hybridSearchOperation,
+        PgVectorDocumentDeleteOperation documentDeleteOperation)
     {
-        _logger = logger;
-        _fallbackGateway = fallbackGateway;
-        _sqlBuilder = sqlBuilder;
-        _parameterBinder = parameterBinder;
-        _resultMapper = resultMapper;
-        _dataSourceProvider = dataSourceProvider;
+        _chunkIndexOperation = chunkIndexOperation;
+        _chunkReadOperation = chunkReadOperation;
+        _hybridSearchOperation = hybridSearchOperation;
+        _documentDeleteOperation = documentDeleteOperation;
     }
 
     public async Task IndexDocumentChunksAsync(List<DocumentChunkIndexDto> chunks, CancellationToken ct)
     {
-        if (chunks.Count == 0)
-        {
-            return;
-        }
-
-        var dataSource = await _dataSourceProvider.GetDataSourceAsync(ct);
-        if (dataSource is null)
-        {
-            await _fallbackGateway.IndexDocumentChunksAsync(chunks, ct);
-            return;
-        }
-
-        var startedAt = Stopwatch.GetTimestamp();
-        try
-        {
-            await using var connection = await dataSource.OpenConnectionAsync(ct);
-            await using var transaction = await connection.BeginTransactionAsync(ct);
-
-            foreach (var chunk in chunks)
-            {
-                if (chunk.Embedding is not { Length: > 0 })
-                {
-                    continue;
-                }
-
-                await using var command = connection.CreateCommand();
-                command.Transaction = transaction;
-                command.CommandText = _sqlBuilder.BuildUpsertSql();
-
-                _parameterBinder.FillUpsertParameters(command, chunk);
-                await command.ExecuteNonQueryAsync(ct);
-            }
-
-            await transaction.CommitAsync(ct);
-            await _fallbackGateway.IndexDocumentChunksAsync(chunks, ct);
-            ChatbotTelemetry.VectorStoreLatencyMs.Record(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
-                new KeyValuePair<string, object?>("vector.operation", "upsert"),
-                new KeyValuePair<string, object?>("vector.provider", "pgvector"));
-        }
-        catch (Exception ex)
-        {
-            _dataSourceProvider.MarkUnavailable(ex);
-            await _fallbackGateway.IndexDocumentChunksAsync(chunks, ct);
-        }
+        await _chunkIndexOperation.ExecuteAsync(chunks, ct);
     }
 
     public async Task<List<DocumentChunkIndexDto>> GetDocumentChunksAsync(Guid documentId, CancellationToken ct)
     {
-        var dataSource = await _dataSourceProvider.GetDataSourceAsync(ct);
-        if (dataSource is null)
-        {
-            return await _fallbackGateway.GetDocumentChunksAsync(documentId, ct);
-        }
-
-        try
-        {
-            await using var connection = await dataSource.OpenConnectionAsync(ct);
-            await using var command = connection.CreateCommand();
-            command.CommandText = _sqlBuilder.BuildGetDocumentChunksSql();
-            command.Parameters.AddWithValue("document_id", NpgsqlDbType.Uuid, documentId);
-
-            var chunks = new List<DocumentChunkIndexDto>();
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-            {
-                chunks.Add(_resultMapper.MapChunk(reader));
-            }
-
-            if (chunks.Count == 0)
-            {
-                return await _fallbackGateway.GetDocumentChunksAsync(documentId, ct);
-            }
-
-            return chunks;
-        }
-        catch (Exception ex)
-        {
-            _dataSourceProvider.MarkUnavailable(ex);
-            return await _fallbackGateway.GetDocumentChunksAsync(documentId, ct);
-        }
+        return await _chunkReadOperation.ExecuteAsync(documentId, ct);
     }
 
     public async Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
     {
-        var dataSource = await _dataSourceProvider.GetDataSourceAsync(ct);
-        if (dataSource is null)
-        {
-            return await _fallbackGateway.HybridSearchAsync(query, queryEmbedding, topK, filters, ct);
-        }
-
-        var startedAt = Stopwatch.GetTimestamp();
-        try
-        {
-            await using var connection = await dataSource.OpenConnectionAsync(ct);
-            await using var command = connection.CreateCommand();
-            command.CommandText = _sqlBuilder.BuildSearchSql(query, queryEmbedding is { Length: > 0 });
-            _parameterBinder.FillSearchParameters(command, query, queryEmbedding, topK, filters);
-
-            var results = new List<SearchResultDto>();
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-            {
-                results.Add(_resultMapper.MapSearchResult(reader));
-            }
-
-            ChatbotTelemetry.VectorStoreLatencyMs.Record(Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
-                new KeyValuePair<string, object?>("vector.operation", "search"),
-                new KeyValuePair<string, object?>("vector.provider", "pgvector"));
-            return results;
-        }
-        catch (Exception ex)
-        {
-            _dataSourceProvider.MarkUnavailable(ex);
-            return await _fallbackGateway.HybridSearchAsync(query, queryEmbedding, topK, filters, ct);
-        }
+        return await _hybridSearchOperation.ExecuteAsync(query, queryEmbedding, topK, filters, ct);
     }
 
     public async Task DeleteDocumentAsync(Guid documentId, CancellationToken ct)
     {
-        var dataSource = await _dataSourceProvider.GetDataSourceAsync(ct);
-        if (dataSource is null)
-        {
-            await _fallbackGateway.DeleteDocumentAsync(documentId, ct);
-            return;
-        }
+        await _documentDeleteOperation.ExecuteAsync(documentId, ct);
+    }
 
-        try
-        {
-            await using var connection = await dataSource.OpenConnectionAsync(ct);
-            await using var command = connection.CreateCommand();
-            command.CommandText = _sqlBuilder.BuildDeleteDocumentSql();
-            command.Parameters.AddWithValue("document_id", NpgsqlDbType.Uuid, documentId);
-            await command.ExecuteNonQueryAsync(ct);
-            await _fallbackGateway.DeleteDocumentAsync(documentId, ct);
-        }
-        catch (Exception ex)
-        {
-            _dataSourceProvider.MarkUnavailable(ex);
-            await _fallbackGateway.DeleteDocumentAsync(documentId, ct);
-        }
+    private static (PgVectorChunkIndexOperation ChunkIndexOperation,
+        PgVectorChunkReadOperation ChunkReadOperation,
+        PgVectorHybridSearchOperation HybridSearchOperation,
+        PgVectorDocumentDeleteOperation DocumentDeleteOperation) CreateOperations(
+        VectorStoreOptions options,
+        ILogger<PgVectorSearchIndexGateway> logger,
+        ISearchIndexGateway fallbackGateway)
+    {
+        var sqlBuilder = new PgVectorSqlBuilder(options);
+        var parameterBinder = new PgVectorCommandParameterBinder(options);
+        var resultMapper = new PgVectorResultMapper();
+        var dataSourceProvider = new PgVectorDataSourceProvider(options, logger, sqlBuilder);
+        return (
+            new PgVectorChunkIndexOperation(fallbackGateway, sqlBuilder, parameterBinder, dataSourceProvider),
+            new PgVectorChunkReadOperation(fallbackGateway, sqlBuilder, resultMapper, dataSourceProvider),
+            new PgVectorHybridSearchOperation(fallbackGateway, sqlBuilder, parameterBinder, resultMapper, dataSourceProvider),
+            new PgVectorDocumentDeleteOperation(fallbackGateway, sqlBuilder, dataSourceProvider));
     }
 }

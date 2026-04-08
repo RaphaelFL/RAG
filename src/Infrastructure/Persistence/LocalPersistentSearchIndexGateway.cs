@@ -6,80 +6,66 @@ namespace Chatbot.Infrastructure.Persistence;
 
 public sealed class LocalPersistentSearchIndexGateway : ISearchIndexGateway
 {
-    private readonly LocalPersistentSearchStorage _storage;
-    private readonly LocalPersistentSearchFallbackSource _fallbackSource;
-    private readonly LocalPersistentSearchFilter _filter;
-    private readonly LocalPersistentSearchScoreCalculator _scoreCalculator;
+    private readonly LocalPersistentChunkIndexOperation _chunkIndexOperation;
+    private readonly LocalPersistentChunkReadOperation _chunkReadOperation;
+    private readonly LocalPersistentHybridSearchOperation _hybridSearchOperation;
+    private readonly LocalPersistentDocumentDeleteOperation _documentDeleteOperation;
 
     public LocalPersistentSearchIndexGateway(IDocumentCatalog documentCatalog, IOptions<LocalPersistenceOptions> options, Microsoft.Extensions.Hosting.IHostEnvironment environment)
         : this(
-            new LocalPersistentSearchStorage(options, environment),
-            new LocalPersistentSearchFallbackSource(documentCatalog),
-            new LocalPersistentSearchFilter(),
-            new LocalPersistentSearchScoreCalculator())
+            CreateOperations(documentCatalog, options, environment))
     {
     }
 
     internal LocalPersistentSearchIndexGateway(
-        LocalPersistentSearchStorage storage,
-        LocalPersistentSearchFallbackSource fallbackSource,
-        LocalPersistentSearchFilter filter,
-        LocalPersistentSearchScoreCalculator scoreCalculator)
+        (LocalPersistentChunkIndexOperation ChunkIndexOperation,
+        LocalPersistentChunkReadOperation ChunkReadOperation,
+        LocalPersistentHybridSearchOperation HybridSearchOperation,
+        LocalPersistentDocumentDeleteOperation DocumentDeleteOperation) operations)
     {
-        _storage = storage;
-        _fallbackSource = fallbackSource;
-        _filter = filter;
-        _scoreCalculator = scoreCalculator;
+        _chunkIndexOperation = operations.ChunkIndexOperation;
+        _chunkReadOperation = operations.ChunkReadOperation;
+        _hybridSearchOperation = operations.HybridSearchOperation;
+        _documentDeleteOperation = operations.DocumentDeleteOperation;
     }
 
     public Task IndexDocumentChunksAsync(List<DocumentChunkIndexDto> chunks, CancellationToken ct)
     {
-        _storage.Upsert(chunks);
-        return Task.CompletedTask;
+        return _chunkIndexOperation.ExecuteAsync(chunks, ct);
     }
 
     public Task<List<DocumentChunkIndexDto>> GetDocumentChunksAsync(Guid documentId, CancellationToken ct)
     {
-        var chunks = _storage.GetDocumentChunks(documentId);
-
-        if (chunks.Count > 0)
-        {
-            return Task.FromResult(chunks);
-        }
-
-        return Task.FromResult(_fallbackSource.GetLegacyDocumentChunks(documentId));
+        return _chunkReadOperation.ExecuteAsync(documentId, ct);
     }
 
     public Task<List<SearchResultDto>> HybridSearchAsync(string query, float[]? queryEmbedding, int topK, FileSearchFilterDto? filters, CancellationToken ct)
     {
-        var candidateResults = _storage.GetAll()
-            .Where(result => _filter.Matches(result, filters))
-            .ToList();
-
-        if (candidateResults.Count == 0)
-        {
-            candidateResults = _fallbackSource.BuildFallbackResults(filters);
-        }
-
-        var orderedResults = candidateResults
-            .Select(result => new SearchResultDto
-            {
-                ChunkId = result.ChunkId,
-                DocumentId = result.DocumentId,
-                Content = result.Content,
-                Metadata = new Dictionary<string, string>(result.Metadata),
-                Score = _scoreCalculator.Calculate(query, queryEmbedding, result)
-            })
-            .OrderByDescending(result => result.Score)
-            .Take(topK)
-            .ToList();
-
-        return Task.FromResult(orderedResults);
+        return _hybridSearchOperation.ExecuteAsync(query, queryEmbedding, topK, filters, ct);
     }
 
     public Task DeleteDocumentAsync(Guid documentId, CancellationToken ct)
     {
-        _storage.DeleteDocument(documentId);
-        return Task.CompletedTask;
+        return _documentDeleteOperation.ExecuteAsync(documentId, ct);
+    }
+
+    private static (LocalPersistentChunkIndexOperation ChunkIndexOperation,
+        LocalPersistentChunkReadOperation ChunkReadOperation,
+        LocalPersistentHybridSearchOperation HybridSearchOperation,
+        LocalPersistentDocumentDeleteOperation DocumentDeleteOperation) CreateOperations(
+        IDocumentCatalog documentCatalog,
+        IOptions<LocalPersistenceOptions> options,
+        Microsoft.Extensions.Hosting.IHostEnvironment environment)
+    {
+        var storage = new LocalPersistentSearchStorage(options, environment);
+        var fallbackSource = new LocalPersistentSearchFallbackSource(documentCatalog);
+        var filter = new LocalPersistentSearchFilter();
+        var scoreCalculator = new LocalPersistentSearchScoreCalculator();
+
+        return (
+            new LocalPersistentChunkIndexOperation(storage),
+            new LocalPersistentChunkReadOperation(storage, fallbackSource),
+            new LocalPersistentHybridSearchOperation(storage, fallbackSource, filter, scoreCalculator),
+            new LocalPersistentDocumentDeleteOperation(storage));
     }
 }

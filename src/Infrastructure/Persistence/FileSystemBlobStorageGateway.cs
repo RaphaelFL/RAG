@@ -7,43 +7,39 @@ namespace Chatbot.Infrastructure.Persistence;
 
 public sealed class FileSystemBlobStorageGateway : IBlobStorageGateway
 {
-    private readonly string _blobRootPath;
+    private readonly FileSystemBlobPathResolver _pathResolver;
+    private readonly BlobContentBuffer _contentBuffer;
 
     public FileSystemBlobStorageGateway(IOptions<LocalPersistenceOptions> options, IHostEnvironment environment)
+        : this(new FileSystemBlobPathResolver(options.Value, environment), new BlobContentBuffer())
     {
-        var resolvedBasePath = ResolveBasePath(options.Value.BasePath, environment.ContentRootPath);
-        _blobRootPath = Path.Combine(resolvedBasePath, options.Value.BlobRootDirectory);
-        Directory.CreateDirectory(_blobRootPath);
+    }
+
+    internal FileSystemBlobStorageGateway(FileSystemBlobPathResolver pathResolver, BlobContentBuffer contentBuffer)
+    {
+        _pathResolver = pathResolver;
+        _contentBuffer = contentBuffer;
+        Directory.CreateDirectory(_pathResolver.RootPath);
     }
 
     public async Task<string> SaveAsync(Stream content, string path, CancellationToken ct)
     {
-        if (content.CanSeek)
-        {
-            content.Position = 0;
-        }
-
-        var resolvedPath = ResolveBlobPath(path);
+        var bytes = await _contentBuffer.ReadAsync(content, ct);
+        var resolvedPath = _pathResolver.Resolve(path);
         var directory = Path.GetDirectoryName(resolvedPath);
         if (!string.IsNullOrWhiteSpace(directory))
         {
             Directory.CreateDirectory(directory);
         }
 
-        await using var target = new FileStream(resolvedPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-        await content.CopyToAsync(target, ct);
-
-        if (content.CanSeek)
-        {
-            content.Position = 0;
-        }
+        await File.WriteAllBytesAsync(resolvedPath, bytes, ct);
 
         return path;
     }
 
     public Task<Stream> GetAsync(string path, CancellationToken ct)
     {
-        var resolvedPath = ResolveBlobPath(path);
+        var resolvedPath = _pathResolver.Resolve(path);
         if (!File.Exists(resolvedPath))
         {
             throw new KeyNotFoundException($"Blob {path} not found");
@@ -55,27 +51,12 @@ public sealed class FileSystemBlobStorageGateway : IBlobStorageGateway
 
     public Task DeleteAsync(string path, CancellationToken ct)
     {
-        var resolvedPath = ResolveBlobPath(path);
+        var resolvedPath = _pathResolver.Resolve(path);
         if (File.Exists(resolvedPath))
         {
             File.Delete(resolvedPath);
         }
 
         return Task.CompletedTask;
-    }
-
-    private string ResolveBlobPath(string relativePath)
-    {
-        var segments = relativePath
-            .Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        return Path.Combine(_blobRootPath, Path.Combine(segments));
-    }
-
-    private static string ResolveBasePath(string configuredPath, string contentRootPath)
-    {
-        return Path.IsPathRooted(configuredPath)
-            ? configuredPath
-            : Path.GetFullPath(Path.Combine(contentRootPath, configuredPath));
     }
 }

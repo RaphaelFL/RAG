@@ -24,21 +24,36 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
     private readonly ISearchIndexGateway _fallbackGateway;
     private readonly SemaphoreSlim _initializationLock = new(1, 1);
 
-    private ConnectionMultiplexer? _connection;
-    private IDatabase? _database;
+    private readonly IRedisConnectionProvider _connectionProvider;
+    private readonly IRedisIndexEnsurer _indexEnsurer;
     private bool _redisSearchUnavailable;
-    private bool _indexEnsured;
 
     public RedisStackSearchIndexGateway(
         IOptions<AppCfg.VectorStoreOptions> vectorOptions,
         IOptions<RedisSettings> redisSettings,
         ILogger<RedisStackSearchIndexGateway> logger,
         ISearchIndexGateway fallbackGateway)
+        : this(vectorOptions, redisSettings, logger, fallbackGateway,
+            new RedisConnectionProvider(vectorOptions, redisSettings),
+            new RedisIndexEnsurer(vectorOptions))
+    {
+    }
+
+    // Internal constructor for dependency injection/testing
+    internal RedisStackSearchIndexGateway(
+        IOptions<AppCfg.VectorStoreOptions> vectorOptions,
+        IOptions<RedisSettings> redisSettings,
+        ILogger<RedisStackSearchIndexGateway> logger,
+        ISearchIndexGateway fallbackGateway,
+        IRedisConnectionProvider connectionProvider,
+        IRedisIndexEnsurer indexEnsurer)
     {
         _vectorOptions = vectorOptions.Value;
         _redisSettings = redisSettings.Value;
         _logger = logger;
         _fallbackGateway = fallbackGateway;
+        _connectionProvider = connectionProvider;
+        _indexEnsurer = indexEnsurer;
     }
 
     public async Task IndexDocumentChunksAsync(List<DocumentChunkIndexDto> chunks, CancellationToken ct)
@@ -190,7 +205,10 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
 
     public void Dispose()
     {
-        _connection?.Dispose();
+        if (_connectionProvider is IDisposable disp)
+        {
+            disp.Dispose();
+        }
         _initializationLock.Dispose();
     }
 
@@ -230,112 +248,33 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
         {
             return null;
         }
-
         if (_redisSearchUnavailable)
         {
             return null;
         }
-
-        if (_database is not null)
-        {
-            return _database;
-        }
-
-        await _initializationLock.WaitAsync(ct);
         try
         {
-            if (_database is not null)
-            {
-                return _database;
-            }
-
-            var connectionString = ResolveConnectionString();
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                return null;
-            }
-
-            _connection = await ConnectionMultiplexer.ConnectAsync(connectionString);
-            _database = _connection.GetDatabase();
-            return _database;
+            return await _connectionProvider.GetDatabaseAsync(ct);
         }
         catch (Exception ex)
         {
             MarkUnavailable(ex);
             return null;
-        }
-        finally
-        {
-            _initializationLock.Release();
         }
     }
 
     private async Task EnsureIndexAsync(IDatabase database, CancellationToken ct)
     {
-        if (_indexEnsured)
-        {
-            return;
-        }
-
-        await _initializationLock.WaitAsync(ct);
         try
         {
-            if (_indexEnsured)
-            {
-                return;
-            }
-
-            try
-            {
-                await database.ExecuteAsync("FT.INFO", _vectorOptions.IndexName);
-                _indexEnsured = true;
-                return;
-            }
-            catch
-            {
-            }
-
-            var createArguments = new List<object>
-            {
-                _vectorOptions.IndexName,
-                "ON", "HASH",
-                "PREFIX", 1, _vectorOptions.KeyPrefix,
-                "SCHEMA",
-                "chunkId", "TAG",
-                "tenantId", "TAG",
-                "documentId", "TAG",
-                "chunkIndex", "NUMERIC",
-                "content", "TEXT",
-                "title", "TEXT",
-                "sourceName", "TEXT",
-                "sourceType", "TAG",
-                "contentType", "TAG",
-                "sectionTitle", "TEXT",
-                "pageNumber", "NUMERIC",
-                "endPageNumber", "NUMERIC",
-                "tags", "TAG", "SEPARATOR", "|",
-                "categories", "TAG", "SEPARATOR", "|",
-                "accessPolicy", "TAG",
-                "contentHash", "TAG",
-                "metadata", "TEXT",
-                "vector", "VECTOR", "HNSW", 6,
-                "TYPE", "FLOAT32",
-                "DIM", _vectorOptions.Dimensions,
-                "DISTANCE_METRIC", "COSINE"
-            };
-
-            await database.ExecuteAsync("FT.CREATE", createArguments.ToArray());
-            _indexEnsured = true;
+            await _indexEnsurer.EnsureIndexAsync(database, ct);
         }
         catch (Exception ex)
         {
             MarkUnavailable(ex);
         }
-        finally
-        {
-            _initializationLock.Release();
-        }
     }
+
 
     private async Task<Dictionary<string, RedisSearchResultAccumulator>> SearchByVectorAsync(IDatabase database, float[] queryEmbedding, int candidateCount, FileSearchFilterDto? filters)
     {
@@ -401,94 +340,7 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
     }
 
     private Dictionary<string, RedisSearchResultAccumulator> ParseSearchResponse(RedisResult response, bool isVectorResult)
-    {
-        var items = new Dictionary<string, RedisSearchResultAccumulator>(StringComparer.OrdinalIgnoreCase);
-        if (response.IsNull)
-        {
-            return items;
-        }
-
-        var values = (RedisResult[])response!;
-        if (values.Length <= 1)
-        {
-            return items;
-        }
-
-        var step = isVectorResult ? 2 : 3;
-        for (var index = 1; index < values.Length; index += step)
-        {
-            var documentKey = values[index].ToString();
-            RedisResult[] fieldEntries;
-            double textualScore = 0;
-
-            if (isVectorResult)
-            {
-                fieldEntries = (RedisResult[])values[index + 1]!;
-            }
-            else
-            {
-                textualScore = double.TryParse(values[index + 1].ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedScore)
-                    ? parsedScore
-                    : 0;
-                fieldEntries = (RedisResult[])values[index + 2]!;
-            }
-
-            var fields = ToFieldDictionary(fieldEntries);
-            var chunkId = ReadField(fields, "chunkId");
-            if (string.IsNullOrWhiteSpace(chunkId))
-            {
-                chunkId = ExtractChunkIdFromKey(documentKey);
-            }
-
-            if (!Guid.TryParse(ReadField(fields, "documentId"), out var documentId))
-            {
-                continue;
-            }
-
-            var metadataJson = ReadField(fields, "metadata", "{}");
-            var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(metadataJson, SerializerOptions)
-                ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            if (!metadata.ContainsKey("title"))
-            {
-                metadata["title"] = ReadField(fields, "title");
-            }
-
-            if (!metadata.ContainsKey("documentTitle"))
-            {
-                metadata["documentTitle"] = ReadField(fields, "title");
-            }
-
-            if (!metadata.ContainsKey("section"))
-            {
-                metadata["section"] = ReadField(fields, "sectionTitle");
-            }
-
-            if (!metadata.ContainsKey("page"))
-            {
-                metadata["page"] = ReadField(fields, "pageNumber");
-            }
-
-            if (!metadata.ContainsKey("endPage"))
-            {
-                metadata["endPage"] = ReadField(fields, "endPageNumber");
-            }
-
-            var result = new RedisSearchResultAccumulator
-            {
-                ChunkId = chunkId,
-                DocumentId = documentId,
-                Content = ReadField(fields, "content"),
-                Metadata = metadata,
-                VectorScore = isVectorResult ? NormalizeVectorScore(ReadField(fields, "vector_score")) : 0,
-                LexicalScore = isVectorResult ? 0 : NormalizeLexicalScore(textualScore)
-            };
-
-            items[chunkId] = result;
-        }
-
-        return items;
-    }
+        => RedisSearchResponseMapper.ParseSearchResponse(response, isVectorResult);
 
     private static List<RedisKey> ParseDocumentKeys(RedisResult response)
     {
@@ -672,12 +524,12 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
         {
             return;
         }
-
         _redisSearchUnavailable = true;
         _logger.LogWarning(ex, "Redis Stack/RediSearch indisponivel; fallback local persistente sera usado.");
-        _connection?.Dispose();
-        _connection = null;
-        _database = null;
+        if (_connectionProvider is IDisposable disp)
+        {
+            disp.Dispose();
+        }
     }
 
     private static string ReadMetadata(Dictionary<string, string> metadata, string key, string fallback = "")
@@ -691,42 +543,7 @@ public sealed class RedisStackSearchIndexGateway : ISearchIndexGateway, IDisposa
     }
 
     private static DocumentChunkIndexDto? ToChunk(HashEntry[] entries)
-    {
-        if (entries.Length == 0)
-        {
-            return null;
-        }
-
-        var fields = entries.ToDictionary(entry => entry.Name.ToString(), entry => entry.Value, StringComparer.OrdinalIgnoreCase);
-        if (!Guid.TryParse(fields.TryGetValue("documentId", out var rawDocumentId) ? rawDocumentId.ToString() : null, out var documentId))
-        {
-            return null;
-        }
-
-        var metadata = fields.TryGetValue("metadata", out var rawMetadata)
-            ? JsonSerializer.Deserialize<Dictionary<string, string>>(rawMetadata.ToString(), SerializerOptions)
-                ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        var pageNumber = fields.TryGetValue("pageNumber", out var rawPageNumber) && int.TryParse(rawPageNumber.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPageNumber)
-            ? parsedPageNumber
-            : 0;
-
-        var embedding = fields.TryGetValue("vector", out var rawVector) && !rawVector.IsNull
-            ? DecodeVector((byte[])rawVector!)
-            : null;
-
-        return new DocumentChunkIndexDto
-        {
-            ChunkId = fields.TryGetValue("chunkId", out var rawChunkId) ? rawChunkId.ToString() : string.Empty,
-            DocumentId = documentId,
-            Content = fields.TryGetValue("content", out var rawContent) ? rawContent.ToString() : string.Empty,
-            Embedding = embedding,
-            PageNumber = pageNumber,
-            Section = fields.TryGetValue("sectionTitle", out var rawSection) ? rawSection.ToString() : null,
-            Metadata = metadata
-        };
-    }
+        => RedisDocumentChunkMapper.ToChunk(entries);
 
     private static float[]? DecodeVector(byte[] payload)
     {

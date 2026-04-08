@@ -6,24 +6,13 @@ namespace Chatbot.Infrastructure.Persistence;
 public sealed class InMemoryBlobStorageGateway : IBlobStorageGateway
 {
     private static readonly ConcurrentDictionary<string, byte[]> Storage = new(StringComparer.OrdinalIgnoreCase);
+    private readonly BlobContentBuffer _contentBuffer = new();
 
-    public Task<string> SaveAsync(Stream content, string path, CancellationToken ct)
+    public async Task<string> SaveAsync(Stream content, string path, CancellationToken ct)
     {
-        if (content.CanSeek)
-        {
-            content.Position = 0;
-        }
+        Storage[path] = await _contentBuffer.ReadAsync(content, ct);
 
-        using var ms = new MemoryStream();
-        content.CopyTo(ms);
-        Storage[path] = ms.ToArray();
-
-        if (content.CanSeek)
-        {
-            content.Position = 0;
-        }
-
-        return Task.FromResult(path);
+        return path;
     }
 
     public Task<Stream> GetAsync(string path, CancellationToken ct)
