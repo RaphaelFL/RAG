@@ -4,6 +4,7 @@ public class DocumentDetailsDto
 {
     public Guid DocumentId { get; set; }
     public string Title { get; set; } = string.Empty;
+    public string OriginalFileName { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public int Version { get; set; }
     public int IndexedChunkCount { get; set; }

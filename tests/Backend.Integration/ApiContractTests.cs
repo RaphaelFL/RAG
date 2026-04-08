@@ -430,6 +430,31 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task DocumentContentEndpoint_ShouldReturnOriginalFileBytes()
+    {
+        using var client = _factory.CreateClient();
+        AddHeaders(client, "56565656-5656-5656-5656-565656565656", role: "TenantAdmin");
+
+        const string documentText = "Documento original para preview literal.";
+        var uploadResponse = await UploadTextFileAsync(client, "manual-original.txt", documentText);
+        uploadResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        var uploadPayload = await uploadResponse.Content.ReadFromJsonAsync<UploadDocumentResponseDto>(JsonOptions);
+        uploadPayload.Should().NotBeNull();
+        await WaitForDocumentStatusAsync(client, uploadPayload!.DocumentId, "Indexed");
+
+        var response = await client.GetAsync($"/api/v1/documents/{uploadPayload.DocumentId}/content");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType.Should().NotBeNull();
+        response.Content.Headers.ContentType!.MediaType.Should().Be("text/plain");
+        response.Content.Headers.ContentDisposition.Should().NotBeNull();
+        response.Content.Headers.ContentDisposition!.DispositionType.Should().Be("inline");
+        response.Content.Headers.ContentDisposition.FileNameStar.Should().Be("manual-original.txt");
+        (await response.Content.ReadAsStringAsync()).Should().Be(documentText);
+    }
+
+    [Fact]
     public async Task ChunkEmbeddingEndpoint_ShouldReturnFullVectorOnDemand()
     {
         using var client = _factory.CreateClient();

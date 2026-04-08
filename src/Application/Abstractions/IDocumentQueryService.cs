@@ -1,5 +1,5 @@
 namespace Chatbot.Application.Abstractions;
 
-public interface IDocumentQueryService : IDocumentCatalogReader, IDocumentInspectionReader, IDocumentChunkEmbeddingReader
+public interface IDocumentQueryService : IDocumentCatalogReader, IDocumentInspectionReader, IDocumentChunkEmbeddingReader, IOriginalDocumentReader
 {
 }

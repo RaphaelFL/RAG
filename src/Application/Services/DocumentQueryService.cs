@@ -102,4 +102,27 @@ public sealed class DocumentQueryService : IDocumentQueryService
             Values = chunk.Embedding.ToList()
         };
     }
+
+    public Task<DocumentFileReference?> GetOriginalDocumentAsync(Guid documentId, CancellationToken ct)
+    {
+        var document = _documentCatalog.Get(documentId);
+        if (document is null || string.IsNullOrWhiteSpace(document.StoragePath))
+        {
+            return Task.FromResult<DocumentFileReference?>(null);
+        }
+
+        _accessGuard.EnsureTenantAccess(document);
+
+        return Task.FromResult<DocumentFileReference?>(new DocumentFileReference
+        {
+            DocumentId = document.DocumentId,
+            OriginalFileName = string.IsNullOrWhiteSpace(document.OriginalFileName)
+                ? document.Title
+                : document.OriginalFileName,
+            ContentType = string.IsNullOrWhiteSpace(document.ContentType)
+                ? "application/octet-stream"
+                : document.ContentType,
+            StoragePath = document.StoragePath
+        });
+    }
 }

@@ -1,5 +1,5 @@
 import { ApiError, apiRequest } from '@/lib/http';
-import { buildProxyUrl } from '@/lib/runtimeEnvironment';
+import { buildDocumentContentUrl, buildProxyUrl } from '@/lib/runtimeEnvironment';
 import type { RuntimeEnvironment } from '@/types/app';
 import type { BulkReindexResponse, DocumentChunkEmbedding, DocumentDetails, DocumentInspection, DocumentMetadataSuggestion, DocumentStatus, UploadDocumentResponse } from '@/features/documents/types/documents';
 
@@ -135,6 +135,10 @@ export async function getDocumentChunkEmbedding(env: RuntimeEnvironment, documen
   return apiRequest<DocumentChunkEmbedding>(env, `/api/v1/documents/${documentId}/chunks/${encodeURIComponent(chunkId)}/embedding`, {
     method: 'GET'
   });
+}
+
+export function getDocumentContentUrl(documentId: string, pageNumber?: number | null) {
+  return buildDocumentContentUrl(documentId, pageNumber);
 }
 
 export async function reindexDocument(env: RuntimeEnvironment, documentId: string, fullReindex: boolean) {

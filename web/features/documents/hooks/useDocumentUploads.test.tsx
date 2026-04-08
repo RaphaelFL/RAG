@@ -151,6 +151,7 @@ describe('useDocumentUploads', () => {
     documentApiMocks.getDocument.mockResolvedValueOnce({
       documentId: 'doc-sem-polling',
       title: 'Planilha.xlsx',
+      originalFileName: 'planilha.xlsx',
       status: 'Indexed',
       version: 1,
       contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -211,6 +212,7 @@ describe('useDocumentUploads', () => {
     documentApiMocks.getDocument.mockResolvedValueOnce({
       documentId: 'doc-1',
       title: 'Manual.pdf',
+      originalFileName: 'manual.pdf',
       status: 'Indexed',
       version: 2,
       contentType: 'application/pdf',
@@ -267,6 +269,7 @@ describe('useDocumentUploads', () => {
       .mockResolvedValueOnce({
         documentId: 'doc-refresh',
         title: 'Manual atualizado.pdf',
+        originalFileName: 'manual-atualizado.pdf',
         status: 'Queued',
         version: 1,
         contentType: 'application/pdf',
@@ -279,6 +282,7 @@ describe('useDocumentUploads', () => {
       .mockResolvedValueOnce({
         documentId: 'doc-refresh',
         title: 'Manual atualizado.pdf',
+        originalFileName: 'manual-atualizado.pdf',
         status: 'Indexed',
         version: 2,
         contentType: 'application/pdf',

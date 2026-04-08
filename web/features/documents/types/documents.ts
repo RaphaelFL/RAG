@@ -32,6 +32,7 @@ export type DocumentMetadataSuggestion = {
 export type DocumentDetails = {
   documentId: string;
   title: string;
+  originalFileName: string;
   status: DocumentStatus;
   version: number;
   indexedChunkCount?: number;

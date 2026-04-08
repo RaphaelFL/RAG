@@ -26,7 +26,8 @@ vi.mock('@/features/chat/state/useRuntimeEnvironment', () => ({
 
 vi.mock('@/features/documents/api/documentsApi', () => ({
   getDocumentInspectionPage: (...args: unknown[]) => getDocumentInspectionPageMock(...args),
-  getDocumentChunkEmbedding: (...args: unknown[]) => getDocumentChunkEmbeddingMock(...args)
+  getDocumentChunkEmbedding: (...args: unknown[]) => getDocumentChunkEmbeddingMock(...args),
+  getDocumentContentUrl: (documentId: string, pageNumber?: number | null) => pageNumber ? `/api/proxy/api/v1/documents/${documentId}/content#page=${pageNumber}` : `/api/proxy/api/v1/documents/${documentId}/content`
 }));
 
 function createInspectionPage(options?: {
@@ -55,6 +56,7 @@ function createInspectionPage(options?: {
     document: {
       documentId: 'doc-1',
       title: 'Manual Financeiro',
+      originalFileName: 'manual-financeiro.txt',
       status: 'Indexed',
       version: 2,
       indexedChunkCount: 3,
@@ -245,5 +247,15 @@ describe('DocumentInspectorDetailConsole', () => {
       expect(getDocumentChunkEmbeddingMock).toHaveBeenCalledWith(runtimeEnvironment, 'doc-1', 'doc-1-chunk-0001');
       expect(screen.getByText(/1\. 0\.123456/i)).toBeInTheDocument();
     });
+  });
+
+  it('expoe links para abrir o documento original no topo e por chunk', async () => {
+    render(<DocumentInspectorDetailConsole documentId="doc-1" />);
+
+    const originalDocumentLink = await screen.findByRole('link', { name: /ver arquivo original:/i });
+    expect(originalDocumentLink).toHaveAttribute('href', '/api/proxy/api/v1/documents/doc-1/content');
+
+    const chunkDocumentLink = screen.getByRole('link', { name: 'Abrir chunk 01 no documento' });
+    expect(chunkDocumentLink).toHaveAttribute('href', '/api/proxy/api/v1/documents/doc-1/content#page=1');
   });
 });

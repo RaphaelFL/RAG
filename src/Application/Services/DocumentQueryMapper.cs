@@ -8,6 +8,7 @@ internal static class DocumentQueryMapper
         {
             DocumentId = document.DocumentId,
             Title = document.Title,
+            OriginalFileName = document.OriginalFileName,
             Status = document.Status,
             Version = document.Version,
             IndexedChunkCount = ResolveIndexedChunkCount(document),

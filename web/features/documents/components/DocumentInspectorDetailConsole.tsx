@@ -3,7 +3,7 @@
 import * as React from 'react';
 import clsx from 'clsx';
 import { useRuntimeEnvironment } from '@/features/chat/state/useRuntimeEnvironment';
-import { getDocumentChunkEmbedding, getDocumentInspectionPage } from '@/features/documents/api/documentsApi';
+import { getDocumentChunkEmbedding, getDocumentContentUrl, getDocumentInspectionPage } from '@/features/documents/api/documentsApi';
 import type { DocumentChunkEmbedding, DocumentChunkInspection, DocumentInspection, DocumentStatus } from '@/features/documents/types/documents';
 
 const ACTIVE_DOCUMENT_STATUSES = new Set<DocumentStatus>(['Queued', 'Parsing', 'OcrProcessing', 'Chunking', 'Embedding', 'Indexing', 'ReindexPending']);
@@ -132,6 +132,11 @@ export default function DocumentInspectorDetailConsole({ documentId }: Readonly<
           <a className="button ghost" href="/inspecao-documental">
             Voltar para todos os documentos
           </a>
+          {document ? (
+            <a className="button ghost" href={getDocumentContentUrl(document.documentId)} rel="noreferrer" target="_blank">
+              Abrir documento original
+            </a>
+          ) : null}
           <button className="button secondary" onClick={handleRefresh} type="button">
             Atualizar documento
           </button>
@@ -237,6 +242,11 @@ function InspectionDocumentContent({
             {document.metadata.category ?? 'Sem categoria'} • {document.contentType}
             {document.source ? ` • ${document.source}` : ''}
           </p>
+          <p>
+            <a href={getDocumentContentUrl(document.documentId)} rel="noreferrer" target="_blank">
+              Ver arquivo original: {document.originalFileName || document.title}
+            </a>
+          </p>
         </div>
         <div className="status-row">
           <span className={clsx('badge', getStatusColor(document.status))}>{getStatusLabel(document.status)}</span>
@@ -293,6 +303,7 @@ function InspectionDocumentContent({
               <ChunkCard
                 key={chunk.chunkId}
                 chunk={chunk}
+                documentId={document.documentId}
                 highlightQuery={deferredChunkSearch}
                 fullEmbedding={fullEmbeddings[chunk.chunkId]}
                 isEmbeddingExpanded={Boolean(expandedEmbeddings[chunk.chunkId])}
@@ -315,6 +326,7 @@ function InspectionDocumentContent({
 
 function ChunkCard({
   chunk,
+  documentId,
   highlightQuery,
   fullEmbedding,
   isEmbeddingExpanded,
@@ -323,6 +335,7 @@ function ChunkCard({
   onToggleEmbedding
 }: Readonly<{
   chunk: DocumentChunkInspection;
+  documentId: string;
   highlightQuery: string;
   fullEmbedding?: DocumentChunkEmbedding;
   isEmbeddingExpanded: boolean;
@@ -331,6 +344,7 @@ function ChunkCard({
   onToggleEmbedding: (chunk: DocumentChunkInspection) => Promise<void>;
 }>) {
   const metadataEntries = Object.entries(chunk.metadata).filter(([key]) => key !== 'chunkIndex');
+  const documentContentUrl = getDocumentContentUrl(documentId, chunk.pageNumber);
   let toggleButtonLabel = 'Mostrar vetor completo';
   if (isEmbeddingLoading) {
     toggleButtonLabel = 'Carregando vetor...';
@@ -367,6 +381,9 @@ function ChunkCard({
         </p>
         {chunk.embedding.exists ? (
           <div className="button-row compact">
+            <a className="button ghost" href={documentContentUrl} rel="noreferrer" target="_blank">
+              Abrir chunk {formatChunkIndex(chunk.chunkIndex)} no documento
+            </a>
             <button className="button ghost" disabled={isEmbeddingLoading} onClick={() => void onToggleEmbedding(chunk)} type="button">
               {toggleButtonLabel}
             </button>

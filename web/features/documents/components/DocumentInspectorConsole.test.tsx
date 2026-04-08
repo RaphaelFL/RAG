@@ -34,6 +34,7 @@ describe('DocumentInspectorConsole', () => {
       {
         documentId: 'doc-1',
         title: 'Manual Financeiro',
+        originalFileName: 'manual-financeiro.txt',
         status: 'Indexed',
         version: 2,
         indexedChunkCount: 2,
@@ -66,6 +67,7 @@ describe('DocumentInspectorConsole', () => {
       {
         documentId: 'doc-1',
         title: 'Manual Financeiro',
+        originalFileName: 'manual-financeiro.txt',
         status: 'Indexed',
         version: 2,
         indexedChunkCount: 2,
@@ -82,6 +84,7 @@ describe('DocumentInspectorConsole', () => {
       {
         documentId: 'doc-2',
         title: 'Politica de RH',
+        originalFileName: 'politica-rh.txt',
         status: 'Indexed',
         version: 1,
         indexedChunkCount: 1,
@@ -118,6 +121,7 @@ describe('DocumentInspectorConsole', () => {
       {
         documentId: 'doc-1',
         title: 'Manual Financeiro',
+        originalFileName: 'manual-financeiro.txt',
         status: 'Indexed',
         version: 2,
         indexedChunkCount: 2,
@@ -134,6 +138,7 @@ describe('DocumentInspectorConsole', () => {
       {
         documentId: 'doc-2',
         title: 'Politica de RH',
+        originalFileName: 'politica-rh.txt',
         status: 'Queued',
         version: 1,
         indexedChunkCount: 1,

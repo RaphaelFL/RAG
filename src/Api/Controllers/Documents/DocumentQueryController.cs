@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 
 namespace Chatbot.Api.Controllers.Documents;
 
@@ -10,10 +11,12 @@ namespace Chatbot.Api.Controllers.Documents;
 public sealed class DocumentQueryController : DocumentControllerBase
 {
     private readonly IDocumentQueryService _documentQueryService;
+    private readonly IBlobStorageGateway _blobStorageGateway;
 
-    public DocumentQueryController(IDocumentQueryService documentQueryService)
+    public DocumentQueryController(IDocumentQueryService documentQueryService, IBlobStorageGateway blobStorageGateway)
     {
         _documentQueryService = documentQueryService;
+        _blobStorageGateway = blobStorageGateway;
     }
 
     [HttpGet]
@@ -95,6 +98,43 @@ public sealed class DocumentQueryController : DocumentControllerBase
             }
 
             return Ok(embedding);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return CreateAccessDenied(ex);
+        }
+    }
+
+    [HttpGet("{documentId}/content")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetOriginalDocument([FromRoute] Guid documentId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var document = await _documentQueryService.GetOriginalDocumentAsync(documentId, cancellationToken);
+            if (document is null)
+            {
+                return CreateDocumentNotFound(documentId);
+            }
+
+            Stream content;
+            try
+            {
+                content = await _blobStorageGateway.GetAsync(document.StoragePath, cancellationToken);
+            }
+            catch (KeyNotFoundException)
+            {
+                return CreateDocumentNotFound(documentId);
+            }
+
+            var contentDisposition = new ContentDispositionHeaderValue("inline");
+            contentDisposition.SetHttpFileName(document.OriginalFileName);
+            Response.Headers.ContentDisposition = contentDisposition.ToString();
+
+            return File(content, document.ContentType, enableRangeProcessing: true);
         }
         catch (UnauthorizedAccessException ex)
         {

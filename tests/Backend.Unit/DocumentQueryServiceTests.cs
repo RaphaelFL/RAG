@@ -93,4 +93,39 @@ public class DocumentQueryServiceTests
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>();
     }
+
+    [Fact]
+    public async Task GetOriginalDocumentAsync_ShouldReturnStorageReference_WhenDocumentIsAccessible()
+    {
+        var tenantId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+        var catalog = new InMemoryDocumentCatalog();
+        catalog.Upsert(new DocumentCatalogEntry
+        {
+            DocumentId = documentId,
+            TenantId = tenantId,
+            Title = "Manual",
+            OriginalFileName = "manual.docx",
+            ContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            StoragePath = $"documents/{tenantId}/{documentId}/raw-content",
+            Status = "Indexed",
+            Version = 1,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow
+        });
+
+        var sut = new DocumentQueryService(
+            catalog,
+            new FakeRequestContextAccessor { TenantId = tenantId },
+            new AllowAllDocumentAuthorizationService(),
+            new CapturingSearchIndexGateway(),
+            new CapturingDocumentReindexSecurityAuditLogger());
+
+        var result = await sut.GetOriginalDocumentAsync(documentId, CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.DocumentId.Should().Be(documentId);
+        result.OriginalFileName.Should().Be("manual.docx");
+        result.StoragePath.Should().Be($"documents/{tenantId}/{documentId}/raw-content");
+    }
 }
