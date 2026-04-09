@@ -112,7 +112,10 @@ describe('useChat', () => {
 
     expect(chatApiMocks.sendChatMessage).toHaveBeenCalledWith(
       environment,
-      expect.objectContaining({ sessionId: 'session-explicita' })
+      expect.objectContaining({
+        sessionId: 'session-explicita',
+        options: expect.objectContaining({ allowGeneralKnowledge: false })
+      })
     );
   });
 

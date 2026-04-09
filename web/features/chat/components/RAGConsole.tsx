@@ -70,7 +70,7 @@ export function RAGConsole() {
       message: currentMessage,
       templateId,
       templateVersion,
-      documentIds: conversationDocumentIds,
+      documentIds: [],
       useStreaming
     });
   }
@@ -202,7 +202,6 @@ export function MessageCard({ message }: Readonly<{ message: ChatMessageModel }>
           <strong>{message.role === 'assistant' ? 'Assistant' : 'User'}</strong>
           <span>{new Date(message.createdAtUtc).toLocaleString('pt-BR')}</span>
         </div>
-  onRefreshStatus,
         {message.isStreaming ? <span className="badge badge-accent">Streaming</span> : null}
       </header>
 
@@ -450,14 +449,14 @@ function buildConversationGroundingHint({
   pendingDocumentCount: number;
 }>) {
   if (indexedDocumentCount === 0 && pendingDocumentCount === 0) {
-    return 'Sem documentos vinculados a esta conversa. O orquestrador decide automaticamente quando responder com conhecimento geral.';
+    return 'Nenhum upload recente nesta conversa. O backend consulta a base indexada do tenant para montar o contexto do RAG.';
   }
 
-  const indexedLabel = `${indexedDocumentCount} documento(s) indexado(s) vinculado(s) a esta conversa`;
+  const indexedLabel = `${indexedDocumentCount} documento(s) enviado(s) nesta conversa ja indexado(s)`;
   const pendingLabel = pendingDocumentCount > 0
     ? ` e ${pendingDocumentCount} ainda em processamento`
     : '';
-  const generalLabel = '. O backend combina RAG, resposta direta ou modo hibrido conforme a evidencia recuperada.';
+  const generalLabel = '. Esses documentos passam a fazer parte da base consultada pelo RAG junto com os demais documentos do tenant.';
 
   return `${indexedLabel}${pendingLabel}${generalLabel}`;
 }

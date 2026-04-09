@@ -19,8 +19,8 @@ public sealed class LocalAgenticChatPlanner : IAgenticChatPlanner
         var requiresRetrieval = templateId switch
         {
             "document_summary" => true,
-            "comparative_answer" => hasConversationDocuments || mentionsDocuments,
-            "grounded_answer" => hasConversationDocuments || mentionsDocuments,
+            "comparative_answer" => true,
+            "grounded_answer" => true,
             _ => hasConversationDocuments || mentionsDocuments
         };
 

@@ -130,7 +130,7 @@ describe('RAGConsole', () => {
     await waitFor(() => {
       expect(sendMessageMock).toHaveBeenCalled();
       expect(sendMessageMock).toHaveBeenCalledWith(expect.objectContaining({
-        documentIds: ['doc-1']
+        documentIds: []
       }));
       expect(screen.queryByText(/sessao vinculada:/i)).not.toBeInTheDocument();
     });

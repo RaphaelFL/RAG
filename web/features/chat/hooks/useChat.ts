@@ -4,6 +4,7 @@ import { startTransition, useMemo, useRef, useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { ApiError } from '@/lib/http';
 import { getChatSession, sendChatMessage, streamChatMessage } from '@/features/chat/api/chatApi';
+import { publicRuntimeDefaults } from '@/lib/publicEnv';
 import type { RuntimeEnvironment } from '@/types/app';
 import type {
   ApiErrorPayload,
@@ -101,7 +102,7 @@ export function useChat({ environment, sessionId }: UseChatArgs) {
       filters: input.documentIds.length > 0 ? { documentIds: input.documentIds } : undefined,
       options: {
         maxCitations: 5,
-        allowGeneralKnowledge: true,
+        allowGeneralKnowledge: publicRuntimeDefaults.allowGeneralKnowledge,
         semanticRanking: true
       }
     };
