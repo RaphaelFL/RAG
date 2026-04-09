@@ -1,5 +1,6 @@
 using Chatbot.Application.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text;
 
 namespace Chatbot.Application.Services;
 
@@ -76,6 +77,32 @@ public sealed class DocumentQueryService : IDocumentQueryService
         return _inspectionBuilder.Build(document, chunks, search, pageNumber, pageSize);
     }
 
+    public async Task<DocumentTextPreviewDto?> GetDocumentTextPreviewAsync(Guid documentId, CancellationToken ct)
+    {
+        var document = _documentCatalog.Get(documentId);
+        if (document is null)
+        {
+            return null;
+        }
+
+        _accessGuard.EnsureTenantAccess(document);
+
+        var orderedChunks = OrderChunks(await _indexGateway.GetDocumentChunksAsync(documentId, ct));
+        var content = BuildPreviewContent(orderedChunks);
+
+        return new DocumentTextPreviewDto
+        {
+            DocumentId = document.DocumentId,
+            Title = document.Title,
+            OriginalFileName = string.IsNullOrWhiteSpace(document.OriginalFileName)
+                ? document.Title
+                : document.OriginalFileName,
+            Content = content,
+            CharacterCount = content.Length,
+            ChunkCount = orderedChunks.Count
+        };
+    }
+
     public async Task<DocumentChunkEmbeddingDto?> GetDocumentChunkEmbeddingAsync(Guid documentId, string chunkId, CancellationToken ct)
     {
         var document = _documentCatalog.Get(documentId);
@@ -124,5 +151,77 @@ public sealed class DocumentQueryService : IDocumentQueryService
                 : document.ContentType,
             StoragePath = document.StoragePath
         });
+    }
+
+    private static List<DocumentChunkIndexDto> OrderChunks(IReadOnlyCollection<DocumentChunkIndexDto> chunks)
+    {
+        return chunks
+            .OrderBy(DocumentQueryMapper.ResolveChunkIndex)
+            .ThenBy(chunk => chunk.PageNumber)
+            .ThenBy(chunk => chunk.ChunkId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string BuildPreviewContent(IReadOnlyList<DocumentChunkIndexDto> orderedChunks)
+    {
+        var builder = new StringBuilder();
+
+        foreach (var chunk in orderedChunks)
+        {
+            var content = NormalizePreviewChunk(chunk.Content);
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                continue;
+            }
+
+            if (builder.Length == 0)
+            {
+                builder.Append(content);
+                continue;
+            }
+
+            AppendMergedChunk(builder, content);
+        }
+
+        return builder.ToString();
+    }
+
+    private static string NormalizePreviewChunk(string content)
+    {
+        return content.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Trim();
+    }
+
+    private static void AppendMergedChunk(StringBuilder builder, string nextContent)
+    {
+        var current = builder.ToString();
+        var overlapLength = FindOverlapLength(current, nextContent);
+
+        if (overlapLength > 0)
+        {
+            builder.Append(nextContent[overlapLength..]);
+            return;
+        }
+
+        builder.AppendLine();
+        builder.AppendLine();
+        builder.Append(nextContent);
+    }
+
+    private static int FindOverlapLength(string current, string nextContent)
+    {
+        var maxLength = Math.Min(Math.Min(current.Length, nextContent.Length), 512);
+        var minimumOverlap = Math.Min(48, Math.Max(12, nextContent.Length / 6));
+
+        for (var length = maxLength; length >= minimumOverlap; length--)
+        {
+            if (current[^length..].Equals(nextContent[..length], StringComparison.Ordinal))
+            {
+                return length;
+            }
+        }
+
+        return 0;
     }
 }

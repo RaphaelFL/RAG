@@ -63,6 +63,15 @@ export type DocumentChunkEmbedding = {
   values: number[];
 };
 
+export type DocumentTextPreview = {
+  documentId: string;
+  title: string;
+  originalFileName: string;
+  content: string;
+  characterCount: number;
+  chunkCount: number;
+};
+
 export type DocumentChunkInspection = {
   chunkId: string;
   chunkIndex: number;

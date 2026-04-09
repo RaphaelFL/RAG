@@ -44,7 +44,7 @@ export function normalizeRuntimeEnvironment(value: unknown): RuntimeEnvironment 
   const source = isRecord(value) ? value : {};
 
   return {
-    apiBaseUrl: readString(source.apiBaseUrl, defaults.apiBaseUrl, true),
+    apiBaseUrl: readApiBaseUrl(source.apiBaseUrl, defaults.apiBaseUrl),
     token: readString(source.token, defaults.token),
     authMode: readAuthMode(source.authMode, defaults.authMode),
     tenantId: readString(source.tenantId, defaults.tenantId, true),
@@ -72,6 +72,21 @@ function readString(value: unknown, fallback: string, preserveFallbackWhenEmpty 
   }
 
   return normalized;
+}
+
+function readApiBaseUrl(value: unknown, fallback: string) {
+  const normalized = readString(value, fallback, true);
+
+  try {
+    const url = new URL(normalized);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return fallback;
+    }
+
+    return url.origin;
+  } catch {
+    return fallback;
+  }
 }
 
 function readAuthMode(value: unknown, fallback: AuthMode): AuthMode {

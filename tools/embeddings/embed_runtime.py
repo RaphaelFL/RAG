@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sys
 
 
@@ -19,13 +20,22 @@ def load_model(model_name, model_path):
             "Instale com: pip install sentence-transformers torch"
         ) from exc
 
-    if model_path and os.path.exists(model_path):
-        return SentenceTransformer(model_path)
+    cache_folder = None
+    if model_path:
+        cache_folder = model_path
+        os.makedirs(cache_folder, exist_ok=True)
+
+        if os.listdir(cache_folder):
+            try:
+                return SentenceTransformer(cache_folder)
+            except Exception:
+                shutil.rmtree(cache_folder, ignore_errors=True)
+                os.makedirs(cache_folder, exist_ok=True)
 
     if not model_name:
         raise RuntimeError("Nenhum model_name ou model_path foi fornecido para o runtime interno de embeddings.")
 
-    return SentenceTransformer(model_name)
+    return SentenceTransformer(model_name, cache_folder=cache_folder)
 
 
 def main():

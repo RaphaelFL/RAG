@@ -1,7 +1,7 @@
 import { ApiError, apiRequest } from '@/lib/http';
 import { buildDocumentContentUrl, buildProxyUrl } from '@/lib/runtimeEnvironment';
 import type { RuntimeEnvironment } from '@/types/app';
-import type { BulkReindexResponse, DocumentChunkEmbedding, DocumentDetails, DocumentInspection, DocumentMetadataSuggestion, DocumentStatus, UploadDocumentResponse } from '@/features/documents/types/documents';
+import type { BulkReindexResponse, DocumentChunkEmbedding, DocumentDetails, DocumentInspection, DocumentMetadataSuggestion, DocumentStatus, DocumentTextPreview, UploadDocumentResponse } from '@/features/documents/types/documents';
 
 export async function suggestDocumentMetadata(
   env: RuntimeEnvironment,
@@ -133,6 +133,12 @@ export async function getDocumentInspectionPage(
 
 export async function getDocumentChunkEmbedding(env: RuntimeEnvironment, documentId: string, chunkId: string) {
   return apiRequest<DocumentChunkEmbedding>(env, `/api/v1/documents/${documentId}/chunks/${encodeURIComponent(chunkId)}/embedding`, {
+    method: 'GET'
+  });
+}
+
+export async function getDocumentTextPreview(env: RuntimeEnvironment, documentId: string) {
+  return apiRequest<DocumentTextPreview>(env, `/api/v1/documents/${documentId}/text-preview`, {
     method: 'GET'
   });
 }

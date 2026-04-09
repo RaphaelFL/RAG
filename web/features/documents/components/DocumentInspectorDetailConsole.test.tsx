@@ -14,6 +14,7 @@ const runtimeEnvironment = {
 
 const getDocumentInspectionPageMock = vi.fn();
 const getDocumentChunkEmbeddingMock = vi.fn();
+const getDocumentTextPreviewMock = vi.fn();
 const defaultInspectionPage = createInspectionPage();
 
 vi.mock('@/features/chat/state/useRuntimeEnvironment', () => ({
@@ -27,6 +28,7 @@ vi.mock('@/features/chat/state/useRuntimeEnvironment', () => ({
 vi.mock('@/features/documents/api/documentsApi', () => ({
   getDocumentInspectionPage: (...args: unknown[]) => getDocumentInspectionPageMock(...args),
   getDocumentChunkEmbedding: (...args: unknown[]) => getDocumentChunkEmbeddingMock(...args),
+  getDocumentTextPreview: (...args: unknown[]) => getDocumentTextPreviewMock(...args),
   getDocumentContentUrl: (documentId: string, pageNumber?: number | null) => pageNumber ? `/api/proxy/api/v1/documents/${documentId}/content#page=${pageNumber}` : `/api/proxy/api/v1/documents/${documentId}/content`
 }));
 
@@ -184,6 +186,15 @@ describe('DocumentInspectorDetailConsole', () => {
       dimensions: 4,
       values: [0.123456, -0.654321, 0.777777, 0.111111]
     });
+
+    getDocumentTextPreviewMock.mockResolvedValue({
+      documentId: 'doc-1',
+      title: 'Manual Financeiro',
+      originalFileName: 'manual-financeiro.txt',
+      content: 'Manual consolidado com todas as secoes do documento.',
+      characterCount: 48,
+      chunkCount: 3
+    });
   });
 
   it('busca os chunks no backend e destaca o termo filtrado', async () => {
@@ -249,13 +260,34 @@ describe('DocumentInspectorDetailConsole', () => {
     });
   });
 
-  it('expoe links para abrir o documento original no topo e por chunk', async () => {
+  it('expoe a visualizacao em tela do chunk e do documento completo', async () => {
     render(<DocumentInspectorDetailConsole documentId="doc-1" />);
 
-    const originalDocumentLink = await screen.findByRole('link', { name: /ver arquivo original:/i });
-    expect(originalDocumentLink).toHaveAttribute('href', '/api/proxy/api/v1/documents/doc-1/content');
+    expect((await screen.findAllByRole('button', { name: 'Ver trecho em tela' })).length).toBeGreaterThan(0);
 
-    const chunkDocumentLink = screen.getByRole('link', { name: 'Abrir chunk 01 no documento' });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ver trecho em tela' })[0]);
+
+    expect(screen.getByRole('heading', { name: /trecho do chunk 01/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/o prazo para envio do comprovante/i).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ver documento completo em tela' })[0]);
+
+    await waitFor(() => {
+      expect(getDocumentTextPreviewMock).toHaveBeenCalledWith(runtimeEnvironment, 'doc-1');
+      expect(screen.getByText(/manual consolidado com todas as secoes/i)).toBeInTheDocument();
+    });
+  });
+
+  it('expoe links e downloads do documento original e do chunk', async () => {
+    render(<DocumentInspectorDetailConsole documentId="doc-1" />);
+
+    const originalDocumentLink = (await screen.findAllByRole('link', { name: 'Baixar documento original' }))[0];
+    expect(originalDocumentLink).toHaveAttribute('href', '/api/proxy/api/v1/documents/doc-1/content');
+    expect(originalDocumentLink).toHaveAttribute('download', 'manual-financeiro.txt');
+
+    const chunkDocumentLink = screen.getAllByRole('link', { name: 'Abrir pagina original' })[0];
     expect(chunkDocumentLink).toHaveAttribute('href', '/api/proxy/api/v1/documents/doc-1/content#page=1');
+
+    expect(screen.getAllByRole('button', { name: 'Baixar chunk' }).length).toBeGreaterThan(0);
   });
 });

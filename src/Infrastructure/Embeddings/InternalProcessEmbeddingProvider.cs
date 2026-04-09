@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -13,6 +14,8 @@ namespace Chatbot.Infrastructure.Embeddings;
 public sealed class InternalProcessEmbeddingProvider : IEmbeddingProvider
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private static readonly ConcurrentDictionary<string, bool> VerifiedRuntimeDependencies = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly SemaphoreSlim DependencyBootstrapLock = new(1, 1);
 
     private readonly EmbeddingGenerationOptions _options;
     private readonly IHostEnvironment _hostEnvironment;
@@ -60,9 +63,11 @@ public sealed class InternalProcessEmbeddingProvider : IEmbeddingProvider
             throw new FileNotFoundException($"Script do runtime interno de embeddings nao encontrado: {scriptPath}", scriptPath);
         }
 
+        await EnsureRuntimeDependenciesAsync(scriptPath, ct);
+
         var startInfo = new ProcessStartInfo
         {
-            FileName = string.IsNullOrWhiteSpace(_options.RuntimeCommand) ? "python" : _options.RuntimeCommand,
+            FileName = ResolveRuntimeCommand(),
             WorkingDirectory = ResolveWorkingDirectory(),
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -120,6 +125,120 @@ public sealed class InternalProcessEmbeddingProvider : IEmbeddingProvider
         return response;
     }
 
+    private async Task EnsureRuntimeDependenciesAsync(string scriptPath, CancellationToken ct)
+    {
+        var requirementsPath = ResolveRequirementsPath(scriptPath);
+        if (requirementsPath is null)
+        {
+            return;
+        }
+
+        var runtimeKey = $"{ResolveRuntimeCommand()}|{requirementsPath}";
+        if (VerifiedRuntimeDependencies.ContainsKey(runtimeKey))
+        {
+            return;
+        }
+
+        await DependencyBootstrapLock.WaitAsync(ct);
+        try
+        {
+            if (VerifiedRuntimeDependencies.ContainsKey(runtimeKey))
+            {
+                return;
+            }
+
+            if (!await ProbeRuntimeDependenciesAsync(ct))
+            {
+                _logger.LogWarning("Dependencias do runtime interno de embeddings ausentes. Instalando a partir de {RequirementsPath}.", requirementsPath);
+                await InstallRuntimeDependenciesAsync(requirementsPath, ct);
+
+                if (!await ProbeRuntimeDependenciesAsync(ct))
+                {
+                    throw new InvalidOperationException($"Nao foi possivel preparar o runtime interno de embeddings com as dependencias declaradas em {requirementsPath}.");
+                }
+
+                _logger.LogInformation("Dependencias do runtime interno de embeddings instaladas com sucesso.");
+            }
+
+            VerifiedRuntimeDependencies.TryAdd(runtimeKey, true);
+        }
+        finally
+        {
+            DependencyBootstrapLock.Release();
+        }
+    }
+
+    private async Task<bool> ProbeRuntimeDependenciesAsync(CancellationToken ct)
+    {
+        var (exitCode, _, _) = await RunUtilityProcessAsync(
+            new[]
+            {
+                "-c",
+                "import sentence_transformers; import torch; import google.protobuf"
+            },
+            Math.Max(15, _options.TimeoutSeconds),
+            ct);
+
+        return exitCode == 0;
+    }
+
+    private async Task InstallRuntimeDependenciesAsync(string requirementsPath, CancellationToken ct)
+    {
+        var (exitCode, _, standardError) = await RunUtilityProcessAsync(
+            new[]
+            {
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "-r",
+                requirementsPath
+            },
+            Math.Max(300, _options.TimeoutSeconds * 4),
+            ct);
+
+        if (exitCode != 0)
+        {
+            throw new InvalidOperationException($"Falha ao instalar dependencias do runtime interno de embeddings: {standardError}");
+        }
+    }
+
+    private async Task<(int ExitCode, string StandardOutput, string StandardError)> RunUtilityProcessAsync(
+        IEnumerable<string> arguments,
+        int timeoutSeconds,
+        CancellationToken ct)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = ResolveRuntimeCommand(),
+            WorkingDirectory = ResolveWorkingDirectory(),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("Nao foi possivel iniciar o utilitario do runtime interno de embeddings.");
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        var standardOutputTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+        var standardErrorTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
+        await process.WaitForExitAsync(timeoutCts.Token);
+
+        return (process.ExitCode, await standardOutputTask, await standardErrorTask);
+    }
+
     private string ResolveModelPath()
     {
         if (string.IsNullOrWhiteSpace(_options.ModelPath))
@@ -135,6 +254,11 @@ public sealed class InternalProcessEmbeddingProvider : IEmbeddingProvider
         return string.IsNullOrWhiteSpace(_options.WorkingDirectory)
             ? _hostEnvironment.ContentRootPath
             : ResolvePath(_options.WorkingDirectory);
+    }
+
+    private string ResolveRuntimeCommand()
+    {
+        return string.IsNullOrWhiteSpace(_options.RuntimeCommand) ? "python" : _options.RuntimeCommand;
     }
 
     private string ResolvePath(string path)
@@ -169,6 +293,18 @@ public sealed class InternalProcessEmbeddingProvider : IEmbeddingProvider
         }
 
         return null;
+    }
+
+    private static string? ResolveRequirementsPath(string scriptPath)
+    {
+        var scriptDirectory = Path.GetDirectoryName(scriptPath);
+        if (string.IsNullOrWhiteSpace(scriptDirectory))
+        {
+            return null;
+        }
+
+        var requirementsPath = Path.Combine(scriptDirectory, "requirements.txt");
+        return File.Exists(requirementsPath) ? requirementsPath : null;
     }
 
     private IEnumerable<string> BuildArguments(string scriptPath)

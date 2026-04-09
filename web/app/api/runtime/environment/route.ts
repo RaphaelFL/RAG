@@ -8,7 +8,7 @@ export async function PUT(request: Request) {
   const payload = await request.json().catch(() => null);
   const environment = normalizeRuntimeEnvironment(payload);
 
-  const response = NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true, environment });
   response.cookies.set({
     ...createRuntimeEnvironmentCookieOptions(),
     value: serializeRuntimeEnvironmentCookie(environment)

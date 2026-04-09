@@ -79,8 +79,7 @@ public class InfrastructureRegistrationTests
             Options.Create(new ExternalProviderClientOptions
             {
                 TimeoutSeconds = 30
-            }),
-            Options.Create(new OpenClaudeCliOptions()));
+            }));
 
         var act = async () => await hostedService.StartAsync(CancellationToken.None);
 
@@ -125,47 +124,6 @@ public class InfrastructureRegistrationTests
         provider.GetRequiredService<IOcrProvider>().Should().BeOfType<LocalVisionOcrProvider>();
         provider.GetRequiredService<ISearchIndexGateway>().Should().BeOfType<LocalPersistentSearchIndexGateway>();
         provider.GetRequiredService<IDocumentCatalog>().Should().BeOfType<FileSystemDocumentCatalog>();
-    }
-
-    [Fact]
-    public void AddInfrastructure_ShouldUseOpenClaudeProvider_WhenEnabled()
-    {
-        var services = new ServiceCollection();
-        AddRuntimePrerequisites(services);
-        services.Configure<ChatModelOptions>(options => options.Model = "qwen2.5-coder:7b");
-        services.Configure<EmbeddingOptions>(options => options.Model = "nomic-embed-text");
-        services.Configure<ExternalProviderClientOptions>(options =>
-        {
-            options.TimeoutSeconds = 30;
-            options.OpenAiCompatibleBaseUrl = "http://localhost:11434/v1";
-            options.OpenAiCompatibleChatModel = "qwen2.5-coder:7b";
-            options.OpenAiCompatibleVisionModel = "llava";
-        });
-        services.Configure<OpenClaudeCliOptions>(options =>
-        {
-            options.Enabled = true;
-            options.WorkingDirectory = "external/openclaude";
-            options.EntryPoint = "dist/cli.mjs";
-            options.RuntimeCommand = "node";
-        });
-        services.Configure<LocalPersistenceOptions>(options =>
-        {
-            options.BasePath = Path.Combine(Path.GetTempPath(), "rag-test-openclaude");
-        });
-        services.Configure<BlobStorageOptions>(_ => { });
-        services.Configure<ProviderExecutionModeOptions>(options =>
-        {
-            options.AllowMockProviders = true;
-            options.AllowInMemoryInfrastructure = true;
-            options.PreferLocalPersistentInfrastructure = true;
-            options.PreferLocalOcr = true;
-        });
-
-        services.AddInfrastructure();
-
-        using var provider = services.BuildServiceProvider();
-
-        provider.GetRequiredService<IChatCompletionProvider>().Should().BeOfType<OpenClaudeCliChatCompletionProvider>();
     }
 
     [Fact]

@@ -46,11 +46,26 @@ internal static class InfrastructureProviderRegistration
             var embeddingRuntimeOptions = serviceProvider.GetRequiredService<IOptions<AppCfg.EmbeddingGenerationOptions>>().Value;
             var executionMode = serviceProvider.GetRequiredService<IOptions<ProviderExecutionModeOptions>>().Value;
 
-            IEmbeddingProvider innerProvider = string.Equals(embeddingRuntimeOptions.PrimaryRuntime, "python-local", StringComparison.OrdinalIgnoreCase)
-                ? ActivatorUtilities.CreateInstance<InternalProcessEmbeddingProvider>(serviceProvider)
-                : executionMode.AllowMockProviders
+            IEmbeddingProvider innerProvider;
+            if (string.Equals(embeddingRuntimeOptions.PrimaryRuntime, "python-local", StringComparison.OrdinalIgnoreCase))
+            {
+                var primaryProvider = ActivatorUtilities.CreateInstance<InternalProcessEmbeddingProvider>(serviceProvider);
+
+                innerProvider = executionMode.AllowMockProviders
+                    ? ActivatorUtilities.CreateInstance<ResilientEmbeddingProvider>(
+                        serviceProvider,
+                        primaryProvider,
+                        ActivatorUtilities.CreateInstance<MockEmbeddingProvider>(serviceProvider),
+                        "python-local",
+                        nameof(MockEmbeddingProvider))
+                    : primaryProvider;
+            }
+            else
+            {
+                innerProvider = executionMode.AllowMockProviders
                     ? ActivatorUtilities.CreateInstance<MockEmbeddingProvider>(serviceProvider)
                     : throw new InvalidOperationException("Somente o runtime interno de embeddings esta habilitado nesta configuracao.");
+            }
 
             return ActivatorUtilities.CreateInstance<CachedEmbeddingProvider>(serviceProvider, innerProvider);
         });

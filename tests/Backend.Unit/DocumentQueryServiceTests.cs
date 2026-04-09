@@ -128,4 +128,59 @@ public class DocumentQueryServiceTests
         result.OriginalFileName.Should().Be("manual.docx");
         result.StoragePath.Should().Be($"documents/{tenantId}/{documentId}/raw-content");
     }
+
+    [Fact]
+    public async Task GetDocumentTextPreviewAsync_ShouldMergeChunkOverlap_WhenDocumentIsAccessible()
+    {
+        var tenantId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+        var catalog = new InMemoryDocumentCatalog();
+        catalog.Upsert(new DocumentCatalogEntry
+        {
+            DocumentId = documentId,
+            TenantId = tenantId,
+            Title = "Documento consolidado",
+            OriginalFileName = "documento.docx",
+            Status = "Indexed",
+            Version = 1,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow
+        });
+
+        var gateway = new CapturingSearchIndexGateway
+        {
+            DocumentChunks = new List<DocumentChunkIndexDto>
+            {
+                new()
+                {
+                    ChunkId = "chunk-001",
+                    DocumentId = documentId,
+                    Content = "DDD - Domain Driven Design\nObjetivo principal do projeto",
+                    PageNumber = 1,
+                    Metadata = new Dictionary<string, string> { ["chunkIndex"] = "0" }
+                },
+                new()
+                {
+                    ChunkId = "chunk-002",
+                    DocumentId = documentId,
+                    Content = "Objetivo principal do projeto\nUma plataforma gamificada para investir.",
+                    PageNumber = 1,
+                    Metadata = new Dictionary<string, string> { ["chunkIndex"] = "1" }
+                }
+            }
+        };
+
+        var sut = new DocumentQueryService(
+            catalog,
+            new FakeRequestContextAccessor { TenantId = tenantId },
+            new AllowAllDocumentAuthorizationService(),
+            gateway,
+            new CapturingDocumentReindexSecurityAuditLogger());
+
+        var result = await sut.GetDocumentTextPreviewAsync(documentId, CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.ChunkCount.Should().Be(2);
+        result.Content.Should().Be("DDD - Domain Driven Design\nObjetivo principal do projeto\nUma plataforma gamificada para investir.");
+    }
 }

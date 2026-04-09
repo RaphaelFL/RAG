@@ -105,6 +105,31 @@ public sealed class DocumentQueryController : DocumentControllerBase
         }
     }
 
+    [HttpGet("{documentId}/text-preview")]
+    [ProducesResponseType(typeof(DocumentTextPreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DocumentTextPreviewDto>> GetDocumentTextPreview(
+        [FromRoute] Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var preview = await _documentQueryService.GetDocumentTextPreviewAsync(documentId, cancellationToken);
+            if (preview is null)
+            {
+                return CreateDocumentNotFound(documentId);
+            }
+
+            return Ok(preview);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return CreateAccessDenied(ex);
+        }
+    }
+
     [HttpGet("{documentId}/content")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]

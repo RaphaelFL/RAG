@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { saveRuntimeEnvironment } from '@/features/chat/api/runtimeEnvironmentApi';
 import { createDefaultEnvironment } from '@/lib/publicEnv';
+import { normalizeRuntimeEnvironment } from '@/lib/runtimeEnvironment';
 import type { RuntimeEnvironment } from '@/types/app';
 
 const STORAGE_KEY = 'rag-console-environment';
@@ -20,7 +21,8 @@ export function useRuntimeEnvironment() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as PersistedEnvironment;
-        setEnvironment({ ...DEFAULT_ENVIRONMENT, ...parsed, token: DEFAULT_ENVIRONMENT.token });
+        const sanitized = normalizeRuntimeEnvironment({ ...DEFAULT_ENVIRONMENT, ...parsed, token: DEFAULT_ENVIRONMENT.token });
+        setEnvironment(sanitized);
       } catch {
         globalThis.sessionStorage.removeItem(STORAGE_KEY);
       }
@@ -34,12 +36,13 @@ export function useRuntimeEnvironment() {
       return;
     }
 
+    const sanitized = normalizeRuntimeEnvironment(environment);
     const persisted: PersistedEnvironment = {
-      apiBaseUrl: environment.apiBaseUrl,
-      authMode: environment.authMode,
-      tenantId: environment.tenantId,
-      userId: environment.userId,
-      userRole: environment.userRole
+      apiBaseUrl: sanitized.apiBaseUrl,
+      authMode: sanitized.authMode,
+      tenantId: sanitized.tenantId,
+      userId: sanitized.userId,
+      userRole: sanitized.userRole
     };
 
     globalThis.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
@@ -50,7 +53,7 @@ export function useRuntimeEnvironment() {
       return;
     }
 
-    void saveRuntimeEnvironment(environment).catch(() => undefined);
+    saveRuntimeEnvironment(environment).catch(() => undefined);
   }, [environment, isReady]);
 
   return {

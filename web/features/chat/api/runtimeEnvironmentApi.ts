@@ -15,4 +15,7 @@ export async function saveRuntimeEnvironment(environment: RuntimeEnvironment) {
     const payload = await response.json().catch(() => undefined);
     throw new Error(typeof payload?.message === 'string' ? payload.message : `HTTP ${response.status}`);
   }
+
+  const payload = await response.json().catch(() => null);
+  return (payload?.environment ?? environment) as RuntimeEnvironment;
 }

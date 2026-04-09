@@ -100,8 +100,9 @@ export default function AdminSettingsConsole() {
     setAccessError(null);
 
     try {
-      await saveRuntimeEnvironment(draftEnvironment);
-      setEnvironment(draftEnvironment);
+      const savedEnvironment = await saveRuntimeEnvironment(draftEnvironment);
+      setDraftEnvironment(savedEnvironment);
+      setEnvironment(savedEnvironment);
       setAccessStatus('saved');
     } catch (error) {
       setAccessError(readableClientError(error));
@@ -193,6 +194,7 @@ export default function AdminSettingsConsole() {
                 value={draftEnvironment.apiBaseUrl}
                 onChange={(event) => updateEnvironmentField('apiBaseUrl', event.target.value)}
               />
+              <small className="field-hint">Use apenas a origem do backend, por exemplo http://localhost:15214.</small>
             </label>
             <label>
               <span>Bearer Token</span>

@@ -3,11 +3,12 @@
 import * as React from 'react';
 import clsx from 'clsx';
 import { useRuntimeEnvironment } from '@/features/chat/state/useRuntimeEnvironment';
-import { getDocumentChunkEmbedding, getDocumentContentUrl, getDocumentInspectionPage } from '@/features/documents/api/documentsApi';
-import type { DocumentChunkEmbedding, DocumentChunkInspection, DocumentInspection, DocumentStatus } from '@/features/documents/types/documents';
+import { getDocumentChunkEmbedding, getDocumentContentUrl, getDocumentInspectionPage, getDocumentTextPreview } from '@/features/documents/api/documentsApi';
+import type { DocumentChunkEmbedding, DocumentChunkInspection, DocumentInspection, DocumentStatus, DocumentTextPreview } from '@/features/documents/types/documents';
 
 const ACTIVE_DOCUMENT_STATUSES = new Set<DocumentStatus>(['Queued', 'Parsing', 'OcrProcessing', 'Chunking', 'Embedding', 'Indexing', 'ReindexPending']);
 const PAGE_SIZE_OPTIONS = [5, 10, 25, 50];
+type ViewerMode = 'chunk' | 'document' | null;
 
 export default function DocumentInspectorDetailConsole({ documentId }: Readonly<{ documentId: string }>) {
   const { useDeferredValue, useState } = React;
@@ -23,6 +24,11 @@ export default function DocumentInspectorDetailConsole({ documentId }: Readonly<
   const [fullEmbeddings, setFullEmbeddings] = useState<Record<string, DocumentChunkEmbedding>>({});
   const [embeddingErrors, setEmbeddingErrors] = useState<Record<string, string>>({});
   const [loadingEmbeddings, setLoadingEmbeddings] = useState<Record<string, boolean>>({});
+  const [viewerMode, setViewerMode] = useState<ViewerMode>(null);
+  const [selectedChunkPreview, setSelectedChunkPreview] = useState<DocumentChunkInspection | null>(null);
+  const [documentPreview, setDocumentPreview] = useState<DocumentTextPreview | null>(null);
+  const [documentPreviewError, setDocumentPreviewError] = useState<string | null>(null);
+  const [isDocumentPreviewLoading, setIsDocumentPreviewLoading] = useState(false);
   const deferredChunkSearch = useDeferredValue(chunkSearch);
 
   React.useEffect(() => {
@@ -84,6 +90,24 @@ export default function DocumentInspectorDetailConsole({ documentId }: Readonly<
     setPage(1);
   }, [deferredChunkSearch, pageSize, documentId]);
 
+  React.useEffect(() => {
+    setViewerMode(null);
+    setSelectedChunkPreview(null);
+    setDocumentPreview(null);
+    setDocumentPreviewError(null);
+  }, [documentId]);
+
+  React.useEffect(() => {
+    if (!inspection || !selectedChunkPreview) {
+      return;
+    }
+
+    const refreshedChunk = inspection.chunks.find((chunk) => chunk.chunkId === selectedChunkPreview.chunkId);
+    if (refreshedChunk) {
+      setSelectedChunkPreview(refreshedChunk);
+    }
+  }, [inspection, selectedChunkPreview]);
+
   async function handleToggleEmbedding(chunk: DocumentChunkInspection) {
     if (!chunk.embedding.exists) {
       return;
@@ -120,6 +144,68 @@ export default function DocumentInspectorDetailConsole({ documentId }: Readonly<
 
   const document = inspection?.document ?? null;
 
+  React.useEffect(() => {
+    if (!isReady || !document || viewerMode !== 'document' || documentPreview || documentPreviewError) {
+      return;
+    }
+
+    let cancelled = false;
+    setIsDocumentPreviewLoading(true);
+
+    getDocumentTextPreview(environment, document.documentId)
+      .then((payload) => {
+        if (!cancelled) {
+          setDocumentPreview(payload);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setDocumentPreviewError(readableClientError(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsDocumentPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [document, documentPreview, documentPreviewError, environment, isReady, viewerMode]);
+
+  function handleShowChunkPreview(chunk: DocumentChunkInspection) {
+    setSelectedChunkPreview(chunk);
+    setViewerMode('chunk');
+  }
+
+  function handleShowDocumentPreview() {
+    setViewerMode('document');
+    if (documentPreviewError) {
+      setDocumentPreview(null);
+      setDocumentPreviewError(null);
+    }
+  }
+
+  function handleCloseViewer() {
+    setViewerMode(null);
+  }
+
+  function handleDownloadChunk(chunk: DocumentChunkInspection) {
+    downloadTextFile(buildChunkFileName(document?.title ?? documentId, chunk), buildChunkExportContent(document?.title ?? documentId, chunk));
+  }
+
+  function handleDownloadVisibleChunks() {
+    if (!inspection) {
+      return;
+    }
+
+    downloadTextFile(
+      buildChunkListFileName(document?.title ?? documentId, inspection.pageNumber),
+      buildVisibleChunksExport(document?.title ?? documentId, inspection.chunks)
+    );
+  }
+
   return (
     <main className="console-shell">
       <section className="console-hero">
@@ -133,9 +219,17 @@ export default function DocumentInspectorDetailConsole({ documentId }: Readonly<
             Voltar para todos os documentos
           </a>
           {document ? (
-            <a className="button ghost" href={getDocumentContentUrl(document.documentId)} rel="noreferrer" target="_blank">
-              Abrir documento original
-            </a>
+            <>
+              <button className="button secondary" onClick={handleShowDocumentPreview} type="button">
+                Ver documento completo em tela
+              </button>
+              <a className="button ghost" download={buildDocumentDownloadName(document)} href={getDocumentContentUrl(document.documentId)}>
+                Baixar documento original
+              </a>
+              <a className="button ghost" href={getDocumentContentUrl(document.documentId)} rel="noreferrer" target="_blank">
+                Abrir documento original
+              </a>
+            </>
           ) : null}
           <button className="button secondary" onClick={handleRefresh} type="button">
             Atualizar documento
@@ -175,11 +269,21 @@ export default function DocumentInspectorDetailConsole({ documentId }: Readonly<
             expandedEmbeddings={expandedEmbeddings}
             fullEmbeddings={fullEmbeddings}
             inspection={inspection}
+            documentPreview={documentPreview}
+            documentPreviewError={documentPreviewError}
+            isDocumentPreviewLoading={isDocumentPreviewLoading}
             loadingEmbeddings={loadingEmbeddings}
             pageSize={pageSize}
+            selectedChunkPreview={selectedChunkPreview}
+            viewerMode={viewerMode}
+            onCloseViewer={handleCloseViewer}
             onChunkSearchChange={setChunkSearch}
+            onDownloadChunk={handleDownloadChunk}
+            onDownloadVisibleChunks={handleDownloadVisibleChunks}
             onPageChange={setPage}
             onPageSizeChange={setPageSize}
+            onShowChunkPreview={handleShowChunkPreview}
+            onShowDocumentPreview={handleShowDocumentPreview}
             onToggleEmbedding={handleToggleEmbedding}
           />
         ) : (
@@ -212,25 +316,45 @@ function InspectionDocumentContent({
   expandedEmbeddings,
   fullEmbeddings,
   inspection,
+  documentPreview,
+  documentPreviewError,
+  isDocumentPreviewLoading,
   loadingEmbeddings,
   pageSize,
+  selectedChunkPreview,
+  viewerMode,
+  onCloseViewer,
   onChunkSearchChange,
+  onDownloadChunk,
+  onDownloadVisibleChunks,
   onPageChange,
   onPageSizeChange,
+  onShowChunkPreview,
+  onShowDocumentPreview,
   onToggleEmbedding
 }: Readonly<{
   chunkSearch: string;
   deferredChunkSearch: string;
   document: DocumentInspection['document'];
+  documentPreview: DocumentTextPreview | null;
+  documentPreviewError: string | null;
   embeddingErrors: Record<string, string>;
   expandedEmbeddings: Record<string, boolean>;
   fullEmbeddings: Record<string, DocumentChunkEmbedding>;
   inspection: DocumentInspection;
+  isDocumentPreviewLoading: boolean;
   loadingEmbeddings: Record<string, boolean>;
   pageSize: number;
+  selectedChunkPreview: DocumentChunkInspection | null;
+  viewerMode: ViewerMode;
+  onCloseViewer: () => void;
   onChunkSearchChange: (value: string) => void;
+  onDownloadChunk: (chunk: DocumentChunkInspection) => void;
+  onDownloadVisibleChunks: () => void;
   onPageChange: React.Dispatch<React.SetStateAction<number>>;
   onPageSizeChange: React.Dispatch<React.SetStateAction<number>>;
+  onShowChunkPreview: (chunk: DocumentChunkInspection) => void;
+  onShowDocumentPreview: () => void;
   onToggleEmbedding: (chunk: DocumentChunkInspection) => Promise<void>;
 }>) {
   return (
@@ -262,6 +386,18 @@ function InspectionDocumentContent({
         <SummaryCard label="Tags" value={document.metadata.tags.length > 0 ? document.metadata.tags.join(', ') : 'Sem tags'} />
       </div>
 
+      <DocumentVisualizationPanel
+        document={document}
+        documentPreview={documentPreview}
+        documentPreviewError={documentPreviewError}
+        isDocumentPreviewLoading={isDocumentPreviewLoading}
+        selectedChunkPreview={selectedChunkPreview}
+        viewerMode={viewerMode}
+        onCloseViewer={onCloseViewer}
+        onDownloadChunk={onDownloadChunk}
+        onShowDocumentPreview={onShowDocumentPreview}
+      />
+
       <div className="chunk-toolbar">
         <label>
           <span>Buscar dentro dos chunks</span>
@@ -279,6 +415,14 @@ function InspectionDocumentContent({
             ))}
           </select>
         </label>
+        <div className="button-row chunk-toolbar-actions">
+          <button className="button ghost" onClick={onDownloadVisibleChunks} type="button">
+            Baixar chunks visiveis
+          </button>
+          <button className="button secondary" onClick={onShowDocumentPreview} type="button">
+            Ver documento completo em tela
+          </button>
+        </div>
       </div>
 
       {inspection.chunks.length > 0 ? (
@@ -304,11 +448,14 @@ function InspectionDocumentContent({
                 key={chunk.chunkId}
                 chunk={chunk}
                 documentId={document.documentId}
+                documentTitle={document.title}
                 highlightQuery={deferredChunkSearch}
                 fullEmbedding={fullEmbeddings[chunk.chunkId]}
                 isEmbeddingExpanded={Boolean(expandedEmbeddings[chunk.chunkId])}
                 embeddingError={embeddingErrors[chunk.chunkId] ?? ''}
                 isEmbeddingLoading={Boolean(loadingEmbeddings[chunk.chunkId])}
+                onDownloadChunk={onDownloadChunk}
+                onShowChunkPreview={onShowChunkPreview}
                 onToggleEmbedding={onToggleEmbedding}
               />
             ))}
@@ -324,23 +471,185 @@ function InspectionDocumentContent({
   );
 }
 
+function DocumentVisualizationPanel({
+  document,
+  documentPreview,
+  documentPreviewError,
+  isDocumentPreviewLoading,
+  selectedChunkPreview,
+  viewerMode,
+  onCloseViewer,
+  onDownloadChunk,
+  onShowDocumentPreview
+}: Readonly<{
+  document: DocumentInspection['document'];
+  documentPreview: DocumentTextPreview | null;
+  documentPreviewError: string | null;
+  isDocumentPreviewLoading: boolean;
+  selectedChunkPreview: DocumentChunkInspection | null;
+  viewerMode: ViewerMode;
+  onCloseViewer: () => void;
+  onDownloadChunk: (chunk: DocumentChunkInspection) => void;
+  onShowDocumentPreview: () => void;
+}>) {
+  const documentContentUrl = getDocumentContentUrl(document.documentId);
+  const title = viewerMode === 'chunk' && selectedChunkPreview
+    ? `Trecho do chunk ${formatChunkIndex(selectedChunkPreview.chunkIndex)}`
+    : 'Documento completo em tela';
+  const description = viewerMode === 'chunk' && selectedChunkPreview
+    ? 'Mostra apenas o trecho que originou o chunk selecionado, sem abrir o arquivo inteiro.'
+    : 'Preview textual consolidado do documento indexado para leitura direta dentro da interface.';
+
+  let panelContent: React.ReactNode;
+  if (viewerMode === 'chunk' && selectedChunkPreview) {
+    panelContent = (
+      <ChunkVisualizationContent
+        chunk={selectedChunkPreview}
+        document={document}
+        onDownloadChunk={onDownloadChunk}
+        onShowDocumentPreview={onShowDocumentPreview}
+      />
+    );
+  } else if (viewerMode === 'document') {
+    panelContent = (
+      <DocumentVisualizationContent
+        documentPreview={documentPreview}
+        documentPreviewError={documentPreviewError}
+        isDocumentPreviewLoading={isDocumentPreviewLoading}
+      />
+    );
+  } else {
+    panelContent = <VisualizationEmptyState onShowDocumentPreview={onShowDocumentPreview} />;
+  }
+
+  return (
+    <section className="document-visualization-panel">
+      <div className="document-visualization-header">
+        <div className="document-visualization-copy">
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        <div className="button-row compact preview-actions">
+          <a className="button ghost" download={buildDocumentDownloadName(document)} href={documentContentUrl}>
+            Baixar documento original
+          </a>
+          <a className="button ghost" href={documentContentUrl} rel="noreferrer" target="_blank">
+            Abrir original
+          </a>
+          {viewerMode ? (
+            <button className="button ghost" onClick={onCloseViewer} type="button">
+              Fechar visualizacao
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {panelContent}
+    </section>
+  );
+}
+
+function ChunkVisualizationContent({
+  chunk,
+  document,
+  onDownloadChunk,
+  onShowDocumentPreview
+}: Readonly<{
+  chunk: DocumentChunkInspection;
+  document: DocumentInspection['document'];
+  onDownloadChunk: (chunk: DocumentChunkInspection) => void;
+  onShowDocumentPreview: () => void;
+}>) {
+  return (
+    <div className="document-preview-surface">
+      <div className="document-preview-meta">
+        <span className="badge badge-accent">{formatPageLabel(chunk)}</span>
+        {chunk.section ? <span className="badge badge-neutral">{chunk.section}</span> : null}
+        <span className="badge badge-neutral">{chunk.characterCount} caracteres</span>
+      </div>
+      <pre className="document-preview-content">{chunk.content}</pre>
+      <div className="button-row compact preview-actions">
+        <button className="button secondary" onClick={() => onDownloadChunk(chunk)} type="button">
+          Baixar chunk
+        </button>
+        <button className="button ghost" onClick={onShowDocumentPreview} type="button">
+          Ver documento completo em tela
+        </button>
+        <a className="button ghost" href={getDocumentContentUrl(document.documentId, chunk.pageNumber)} rel="noreferrer" target="_blank">
+          Abrir pagina original
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function DocumentVisualizationContent({
+  documentPreview,
+  documentPreviewError,
+  isDocumentPreviewLoading
+}: Readonly<{
+  documentPreview: DocumentTextPreview | null;
+  documentPreviewError: string | null;
+  isDocumentPreviewLoading: boolean;
+}>) {
+  return (
+    <div className="document-preview-surface">
+      <div className="document-preview-meta">
+        <span className="badge badge-accent">{documentPreview?.chunkCount ?? 0} chunks consolidados</span>
+        <span className="badge badge-neutral">{documentPreview?.characterCount ?? 0} caracteres</span>
+      </div>
+      {documentPreviewError ? <div className="error-banner">{documentPreviewError}</div> : null}
+      {isDocumentPreviewLoading ? <div className="info-banner">Carregando preview textual do documento...</div> : null}
+      {documentPreview ? <pre className="document-preview-content">{documentPreview.content}</pre> : null}
+      {!isDocumentPreviewLoading && !documentPreviewError && !documentPreview ? (
+        <div className="empty-state compact">
+          <h3>Preview indisponivel</h3>
+          <p>O documento ainda nao gerou um preview textual consolidado.</p>
+        </div>
+      ) : null}
+      <p className="document-preview-note">
+        Esta visualizacao prioriza leitura e responsividade. O arquivo original continua disponivel separadamente para abertura e download.
+      </p>
+    </div>
+  );
+}
+
+function VisualizationEmptyState({ onShowDocumentPreview }: Readonly<{ onShowDocumentPreview: () => void }>) {
+  return (
+    <div className="empty-state compact">
+      <h3>Selecione uma visualizacao</h3>
+      <p>Abra um chunk para inspecionar apenas o trecho correspondente ou carregue o documento completo em tela.</p>
+      <div className="button-row compact preview-actions">
+        <button className="button secondary" onClick={onShowDocumentPreview} type="button">
+          Ver documento completo em tela
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ChunkCard({
   chunk,
   documentId,
+  documentTitle,
   highlightQuery,
   fullEmbedding,
   isEmbeddingExpanded,
   embeddingError,
   isEmbeddingLoading,
+  onDownloadChunk,
+  onShowChunkPreview,
   onToggleEmbedding
 }: Readonly<{
   chunk: DocumentChunkInspection;
   documentId: string;
+  documentTitle: string;
   highlightQuery: string;
   fullEmbedding?: DocumentChunkEmbedding;
   isEmbeddingExpanded: boolean;
   embeddingError: string;
   isEmbeddingLoading: boolean;
+  onDownloadChunk: (chunk: DocumentChunkInspection) => void;
+  onShowChunkPreview: (chunk: DocumentChunkInspection) => void;
   onToggleEmbedding: (chunk: DocumentChunkInspection) => Promise<void>;
 }>) {
   const metadataEntries = Object.entries(chunk.metadata).filter(([key]) => key !== 'chunkIndex');
@@ -372,6 +681,18 @@ function ChunkCard({
 
       <pre className="chunk-content"><HighlightedChunkText text={chunk.content} query={highlightQuery} /></pre>
 
+      <div className="button-row chunk-action-row">
+        <button className="button secondary" onClick={() => onShowChunkPreview(chunk)} type="button">
+          Ver trecho em tela
+        </button>
+        <button className="button ghost" onClick={() => onDownloadChunk(chunk)} type="button">
+          Baixar chunk
+        </button>
+        <a className="button ghost" href={documentContentUrl} rel="noreferrer" target="_blank">
+          Abrir pagina original
+        </a>
+      </div>
+
       <div className="embedding-preview-card">
         <strong>Embedding</strong>
         <p>
@@ -381,9 +702,6 @@ function ChunkCard({
         </p>
         {chunk.embedding.exists ? (
           <div className="button-row compact">
-            <a className="button ghost" href={documentContentUrl} rel="noreferrer" target="_blank">
-              Abrir chunk {formatChunkIndex(chunk.chunkIndex)} no documento
-            </a>
             <button className="button ghost" disabled={isEmbeddingLoading} onClick={() => void onToggleEmbedding(chunk)} type="button">
               {toggleButtonLabel}
             </button>
@@ -407,6 +725,49 @@ function ChunkCard({
       ) : null}
     </article>
   );
+}
+
+function buildChunkExportContent(documentTitle: string, chunk: DocumentChunkInspection) {
+  return [
+    `Documento: ${documentTitle}`,
+    `Chunk: ${formatChunkIndex(chunk.chunkIndex)}`,
+    `Localizacao: ${formatPageLabel(chunk)}`,
+    chunk.section ? `Secao: ${chunk.section}` : null,
+    '',
+    chunk.content
+  ].filter((value): value is string => Boolean(value)).join('\n');
+}
+
+function buildVisibleChunksExport(documentTitle: string, chunks: DocumentChunkInspection[]) {
+  return chunks.map((chunk) => buildChunkExportContent(documentTitle, chunk)).join('\n\n--------------------\n\n');
+}
+
+function buildChunkFileName(documentTitle: string, chunk: DocumentChunkInspection) {
+  return sanitizeFileName(`${documentTitle}-chunk-${formatChunkIndex(chunk.chunkIndex)}.txt`);
+}
+
+function buildChunkListFileName(documentTitle: string, pageNumber: number) {
+  return sanitizeFileName(`${documentTitle}-chunks-pagina-${pageNumber}.txt`);
+}
+
+function buildDocumentDownloadName(document: DocumentInspection['document']) {
+  return sanitizeFileName(document.originalFileName || `${document.title}.bin`);
+}
+
+function sanitizeFileName(value: string) {
+  return value.replaceAll(/[<>:"/\\|?*\u0000-\u001F]/g, '-');
+}
+
+function downloadTextFile(fileName: string, content: string) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const objectUrl = globalThis.URL.createObjectURL(blob);
+  const link = globalThis.document.createElement('a');
+  link.href = objectUrl;
+  link.download = fileName;
+  globalThis.document.body.append(link);
+  link.click();
+  link.remove();
+  globalThis.setTimeout(() => globalThis.URL.revokeObjectURL(objectUrl), 0);
 }
 
 function formatChunkIndex(chunkIndex: number) {
