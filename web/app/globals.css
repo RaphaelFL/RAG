@@ -147,8 +147,19 @@ button {
 .panel-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 18px;
   margin-bottom: 18px;
+}
+
+.panel-header > div {
+  min-width: 0;
+  flex: 1 1 280px;
+}
+
+.panel-header .badge {
+  flex-shrink: 0;
 }
 
 .panel-header-tight {
@@ -271,6 +282,7 @@ textarea {
   align-items: center;
   justify-content: center;
   min-height: 28px;
+  margin-left: 10px;
   padding: 0 12px;
   border-radius: 999px;
   font-size: 0.78rem;
@@ -535,13 +547,17 @@ textarea {
 }
 
 .document-browser-list-wide {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  align-items: stretch;
 }
 
 .document-browser-entry {
   display: grid;
   gap: 8px;
   width: 100%;
+  min-width: 0;
+  height: 100%;
+  align-content: start;
   text-align: left;
   border: 1px solid rgba(55, 44, 28, 0.08);
   border-radius: 18px;
@@ -562,6 +578,7 @@ textarea {
   color: var(--accent-strong);
   font-size: 0.82rem;
   font-weight: 700;
+  margin-top: auto;
 }
 
 .document-browser-entry-header,
@@ -573,10 +590,33 @@ textarea {
   align-items: flex-start;
 }
 
+.document-browser-entry-header {
+  min-width: 0;
+}
+
+.document-browser-entry-header .badge {
+  flex-shrink: 0;
+}
+
 .document-browser-entry strong,
 .inspection-document-header h3,
 .chunk-card strong {
   font-family: var(--font-display);
+}
+
+.document-browser-entry strong,
+.inspection-document-header h3 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.document-browser-entry strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
 
 .document-browser-entry p,
@@ -585,14 +625,22 @@ textarea {
 .embedding-preview-card p {
   margin: 0;
   color: var(--muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .document-browser-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.document-browser-meta span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .inspection-summary-grid {

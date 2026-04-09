@@ -182,6 +182,7 @@ export default function DocumentInspectorConsole() {
                 key={document.documentId}
                 className="document-browser-entry document-browser-entry-link"
                 href={`/inspecao-documental/${document.documentId}`}
+                title={document.title}
               >
                 <div className="document-browser-entry-header">
                   <strong>{document.title}</strong>
