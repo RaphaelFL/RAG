@@ -17,6 +17,17 @@ type NormalizationState = {
   outlineIndex: number;
 };
 
+const NON_RENDERABLE_TAGS = new Set([
+  'style',
+  'script',
+  'noscript',
+  'template',
+  'meta',
+  'link',
+  'title',
+  'head'
+]);
+
 export function normalizeDomDocument(options: DomNormalizationOptions) {
   const state: NormalizationState = {
     createId: createIdFactory(`${options.input.documentId}-${options.format}`),
@@ -61,25 +72,29 @@ function normalizeChildNodes(nodes: ChildNode[], state: NormalizationState, inhe
   return nodes.flatMap((node) => normalizeNode(node, state, inheritedSourceMap)).filter(isMeaningfulNode);
 }
 
+function normalizeTextNode(node: ChildNode, state: NormalizationState, inheritedSourceMap: ChunkSourceMap): DocumentNode[] {
+  const text = node.textContent?.replaceAll(/\r\n?/g, '\n') ?? '';
+  if (!text.trim() && !text.includes('\n')) {
+    return [];
+  }
+
+  return [{
+    id: state.createId('text'),
+    kind: 'text',
+    text,
+    style: {
+      css: {
+        whiteSpace: text.includes('\n') ? 'pre-wrap' : undefined
+      },
+      preserveWhitespace: text.includes('\n')
+    },
+    sourceMap: inheritedSourceMap
+  }];
+}
+
 function normalizeNode(node: ChildNode, state: NormalizationState, inheritedSourceMap: ChunkSourceMap): DocumentNode[] {
   if (node.nodeType === Node.TEXT_NODE) {
-    const text = node.textContent?.replaceAll(/\r\n?/g, '\n') ?? '';
-    if (!text.trim() && !text.includes('\n')) {
-      return [];
-    }
-
-    return [{
-      id: state.createId('text'),
-      kind: 'text',
-      text,
-      style: {
-        css: {
-          whiteSpace: text.includes('\n') ? 'pre-wrap' : undefined
-        },
-        preserveWhitespace: text.includes('\n')
-      },
-      sourceMap: inheritedSourceMap
-    }];
+    return normalizeTextNode(node, state, inheritedSourceMap);
   }
 
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -89,6 +104,10 @@ function normalizeNode(node: ChildNode, state: NormalizationState, inheritedSour
   const element = node as HTMLElement;
   const tagName = element.tagName.toLowerCase();
   const sourceMap = readElementSourceMap(element, inheritedSourceMap);
+
+  if (NON_RENDERABLE_TAGS.has(tagName)) {
+    return [];
+  }
 
   if (tagName === 'br') {
     return [{ id: state.createId('br'), kind: 'line-break', sourceMap }];
