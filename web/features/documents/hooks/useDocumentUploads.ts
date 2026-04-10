@@ -47,6 +47,34 @@ function getStatusMessage(status: DocumentStatus) {
   }
 }
 
+function getExistingDocumentId(error: ApiError) {
+  if (error.status !== 409 || typeof error.payload !== 'object' || error.payload === null) {
+    return null;
+  }
+
+  const payload = error.payload as {
+    code?: unknown;
+    details?: Record<string, unknown>;
+  };
+
+  if (payload.code !== 'document_conflict') {
+    return null;
+  }
+
+  const rawValue = payload.details?.existingDocumentId;
+  if (!Array.isArray(rawValue) || typeof rawValue[0] !== 'string' || !rawValue[0].trim()) {
+    return null;
+  }
+
+  return rawValue[0];
+}
+
+function getDuplicateDocumentStatusMessage(status: DocumentStatus) {
+  const baseMessage = 'Documento com o mesmo conteudo ja existe para este tenant. O registro existente foi carregado.';
+  const processingMessage = getStatusMessage(status);
+  return processingMessage ? `${baseMessage} ${processingMessage}` : baseMessage;
+}
+
 export function useDocumentUploads(environment: RuntimeEnvironment, conversationSessionId: string) {
   const [allUploads, setAllUploads] = useState<DocumentUploadModel[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +151,37 @@ export function useDocumentUploads(environment: RuntimeEnvironment, conversation
         )
       );
     } catch (error) {
+      if (error instanceof ApiError) {
+        const existingDocumentId = getExistingDocumentId(error);
+
+        if (existingDocumentId) {
+          try {
+            const details = await getDocument(environment, existingDocumentId);
+            setAllUploads((current) =>
+              current.map((entry) =>
+                entry.localId === localId
+                  ? {
+                      ...entry,
+                      fileName: details.originalFileName,
+                      documentId: details.documentId,
+                      status: details.status,
+                      logicalTitle: details.title,
+                      category: details.metadata.category ?? details.metadata.categories[0] ?? entry.category,
+                      tags: details.metadata.tags.length > 0 ? details.metadata.tags : entry.tags,
+                      statusMessage: getDuplicateDocumentStatusMessage(details.status),
+                      error: undefined,
+                      details
+                    }
+                  : entry
+              )
+            );
+            return;
+          } catch {
+            // Fall through to the generic error path when the existing document cannot be loaded.
+          }
+        }
+      }
+
       const message = error instanceof ApiError ? error.message : 'Falha no upload';
       setError(message);
       setAllUploads((current) =>

@@ -104,7 +104,7 @@ public sealed class DocumentUploadController : DocumentControllerBase
         catch (DuplicateDocumentException ex)
         {
             _securityAuditLogger.LogFileRejected(file.FileName, ex.Message);
-            return CreateDocumentConflict(ex.Message);
+            return CreateDocumentConflict(ex.Message, ex.ExistingDocumentId);
         }
         catch (InvalidOperationException ex)
         {

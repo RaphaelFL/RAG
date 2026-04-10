@@ -147,6 +147,23 @@ export function getDocumentContentUrl(documentId: string, pageNumber?: number | 
   return buildDocumentContentUrl(documentId, pageNumber);
 }
 
+export async function getDocumentContentBlob(documentId: string) {
+  const response = await fetch(buildDocumentContentUrl(documentId), {
+    method: 'GET'
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => undefined);
+    throw new ApiError(
+      typeof payload?.message === 'string' ? payload.message : `HTTP ${response.status}`,
+      response.status,
+      payload
+    );
+  }
+
+  return response.blob();
+}
+
 export async function reindexDocument(env: RuntimeEnvironment, documentId: string, fullReindex: boolean) {
   return apiRequest<{ documentId: string; status: DocumentStatus; chunksReindexed: number; jobId?: string | null }>(
     env,

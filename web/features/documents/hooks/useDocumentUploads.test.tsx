@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDocumentUploads } from '@/features/documents/hooks/useDocumentUploads';
+import { ApiError } from '@/lib/http';
 
 const documentApiMocks = vi.hoisted(() => ({
   suggestDocumentMetadata: vi.fn(),
@@ -82,6 +83,61 @@ describe('useDocumentUploads', () => {
     });
 
     expect(documentApiMocks.getDocument).not.toHaveBeenCalled();
+  });
+
+  it('reaproveita o documento existente quando o backend sinaliza conflito por duplicidade', async () => {
+    documentApiMocks.uploadDocument.mockRejectedValue(
+      new ApiError(
+        'A document with the same content already exists for this tenant: doc-existente',
+        409,
+        {
+          code: 'document_conflict',
+          message: 'A document with the same content already exists for this tenant: doc-existente',
+          details: {
+            existingDocumentId: ['doc-existente']
+          }
+        }
+      )
+    );
+
+    documentApiMocks.getDocument.mockResolvedValue({
+      documentId: 'doc-existente',
+      title: 'Assista',
+      originalFileName: 'assista.pdf',
+      status: 'Indexed',
+      version: 1,
+      contentType: 'application/pdf',
+      createdAtUtc: '2026-03-31T22:00:00Z',
+      updatedAtUtc: '2026-03-31T22:05:00Z',
+      metadata: {
+        category: 'politicas',
+        tags: ['manual', 'assista'],
+        categories: ['politicas']
+      }
+    });
+
+    const { result } = renderHook(() => useDocumentUploads(environment, 'session-1'));
+
+    await act(async () => {
+      await result.current.submitUpload({
+        file: new File(['conteudo'], 'assista.pdf', { type: 'application/pdf' }),
+        title: 'Assista',
+        category: 'politicas',
+        categories: ['politicas'],
+        tags: ['manual']
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeNull();
+      expect(result.current.uploads[0]?.status).toBe('Indexed');
+      expect(result.current.uploads[0]?.documentId).toBe('doc-existente');
+      expect(result.current.uploads[0]?.error).toBeUndefined();
+      expect(result.current.uploads[0]?.statusMessage).toContain('registro existente foi carregado');
+      expect(result.current.uploads[0]?.details?.title).toBe('Assista');
+    });
+
+    expect(documentApiMocks.getDocument).toHaveBeenCalledWith(environment, 'doc-existente');
   });
 
   it('escopa o card de uploads pela sessao atual da conversa', async () => {

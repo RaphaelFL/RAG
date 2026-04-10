@@ -17,18 +17,48 @@ export function useRuntimeEnvironment() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const saved = globalThis.sessionStorage.getItem(STORAGE_KEY);
-    if (saved) {
+    let cancelled = false;
+
+    async function initializeEnvironment() {
+      let resolvedEnvironment = DEFAULT_ENVIRONMENT;
+      const saved = globalThis.sessionStorage.getItem(STORAGE_KEY);
+
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as PersistedEnvironment;
+          resolvedEnvironment = normalizeRuntimeEnvironment({
+            ...DEFAULT_ENVIRONMENT,
+            ...parsed,
+            token: DEFAULT_ENVIRONMENT.token
+          });
+        } catch {
+          globalThis.sessionStorage.removeItem(STORAGE_KEY);
+        }
+      }
+
+      if (!cancelled) {
+        setEnvironment(resolvedEnvironment);
+      }
+
       try {
-        const parsed = JSON.parse(saved) as PersistedEnvironment;
-        const sanitized = normalizeRuntimeEnvironment({ ...DEFAULT_ENVIRONMENT, ...parsed, token: DEFAULT_ENVIRONMENT.token });
-        setEnvironment(sanitized);
+        const savedEnvironment = await saveRuntimeEnvironment(resolvedEnvironment);
+        if (!cancelled) {
+          setEnvironment(savedEnvironment);
+        }
       } catch {
-        globalThis.sessionStorage.removeItem(STORAGE_KEY);
+        // O frontend continua funcional mesmo sem sincronizar o cookie na inicializacao.
+      } finally {
+        if (!cancelled) {
+          setIsReady(true);
+        }
       }
     }
 
-    setIsReady(true);
+    void initializeEnvironment();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -46,14 +76,6 @@ export function useRuntimeEnvironment() {
     };
 
     globalThis.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
-  }, [environment, isReady]);
-
-  useEffect(() => {
-    if (!isReady) {
-      return;
-    }
-
-    saveRuntimeEnvironment(environment).catch(() => undefined);
   }, [environment, isReady]);
 
   return {

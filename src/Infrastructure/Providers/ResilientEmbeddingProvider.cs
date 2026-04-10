@@ -34,7 +34,7 @@ public sealed class ResilientEmbeddingProvider : IEmbeddingProvider
         {
             return await _primaryProvider.CreateEmbeddingAsync(text, modelOverride, ct);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }

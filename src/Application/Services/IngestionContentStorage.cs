@@ -25,7 +25,9 @@ public sealed class IngestionContentStorage : IIngestionContentStorage
 
         if (duplicate is not null && existingFailedDocument is null)
         {
-            throw new DuplicateDocumentException($"A document with the same content already exists for this tenant: {duplicate.DocumentId}");
+            throw new DuplicateDocumentException(
+                $"A document with the same content already exists for this tenant: {duplicate.DocumentId}",
+                duplicate.DocumentId);
         }
 
         var documentId = existingFailedDocument?.DocumentId ?? command.DocumentId;

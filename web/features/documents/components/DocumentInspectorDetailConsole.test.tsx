@@ -14,7 +14,6 @@ const runtimeEnvironment = {
 
 const getDocumentInspectionPageMock = vi.fn();
 const getDocumentChunkEmbeddingMock = vi.fn();
-const getDocumentTextPreviewMock = vi.fn();
 const defaultInspectionPage = createInspectionPage();
 
 vi.mock('@/features/chat/state/useRuntimeEnvironment', () => ({
@@ -25,10 +24,17 @@ vi.mock('@/features/chat/state/useRuntimeEnvironment', () => ({
   })
 }));
 
+vi.mock('@/features/documents/viewer/UnifiedDocumentWorkspace', () => ({
+  default: ({ activeChunkId, activeDisplayMode, inspection }: { activeChunkId?: string | null; activeDisplayMode?: 'document' | 'chunk'; inspection: { chunks: Array<{ chunkId: string }> } }) => (
+    <div data-testid="unified-workspace" data-active-chunk-id={activeChunkId ?? ''} data-display-mode={activeDisplayMode ?? 'document'}>
+      workspace:{inspection.chunks.length}
+    </div>
+  )
+}));
+
 vi.mock('@/features/documents/api/documentsApi', () => ({
   getDocumentInspectionPage: (...args: unknown[]) => getDocumentInspectionPageMock(...args),
   getDocumentChunkEmbedding: (...args: unknown[]) => getDocumentChunkEmbeddingMock(...args),
-  getDocumentTextPreview: (...args: unknown[]) => getDocumentTextPreviewMock(...args),
   getDocumentContentUrl: (documentId: string, pageNumber?: number | null) => pageNumber ? `/api/proxy/api/v1/documents/${documentId}/content#page=${pageNumber}` : `/api/proxy/api/v1/documents/${documentId}/content`
 }));
 
@@ -186,15 +192,6 @@ describe('DocumentInspectorDetailConsole', () => {
       dimensions: 4,
       values: [0.123456, -0.654321, 0.777777, 0.111111]
     });
-
-    getDocumentTextPreviewMock.mockResolvedValue({
-      documentId: 'doc-1',
-      title: 'Manual Financeiro',
-      originalFileName: 'manual-financeiro.txt',
-      content: 'Manual consolidado com todas as secoes do documento.',
-      characterCount: 48,
-      chunkCount: 3
-    });
   });
 
   it('busca os chunks no backend e destaca o termo filtrado', async () => {
@@ -260,21 +257,24 @@ describe('DocumentInspectorDetailConsole', () => {
     });
   });
 
-  it('expoe a visualizacao em tela do chunk e do documento completo', async () => {
+  it('integra a lista com o workspace estruturado', async () => {
     render(<DocumentInspectorDetailConsole documentId="doc-1" />);
 
-    expect((await screen.findAllByRole('button', { name: 'Ver trecho em tela' })).length).toBeGreaterThan(0);
+    const workspace = await screen.findByTestId('unified-workspace');
+    expect(workspace).toHaveAttribute('data-display-mode', 'document');
+    expect(workspace).toHaveAttribute('data-active-chunk-id', 'doc-1-chunk-0001');
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Ver trecho em tela' })[0]);
-
-    expect(screen.getByRole('heading', { name: /trecho do chunk 01/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/o prazo para envio do comprovante/i).length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Ver documento completo em tela' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Exibir no workspace' })[1]);
 
     await waitFor(() => {
-      expect(getDocumentTextPreviewMock).toHaveBeenCalledWith(runtimeEnvironment, 'doc-1');
-      expect(screen.getByText(/manual consolidado com todas as secoes/i)).toBeInTheDocument();
+      expect(screen.getByTestId('unified-workspace')).toHaveAttribute('data-display-mode', 'chunk');
+      expect(screen.getByTestId('unified-workspace')).toHaveAttribute('data-active-chunk-id', 'doc-1-chunk-0002');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Visualizar documento estruturado' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('unified-workspace')).toHaveAttribute('data-display-mode', 'document');
     });
   });
 

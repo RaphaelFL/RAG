@@ -61,12 +61,18 @@ public abstract class DocumentControllerBase : ControllerBase
         });
     }
 
-    protected ConflictObjectResult CreateDocumentConflict(string message)
+    protected ConflictObjectResult CreateDocumentConflict(string message, Guid? existingDocumentId = null)
     {
         return Conflict(new ErrorResponseDto
         {
             Code = "document_conflict",
             Message = message,
+            Details = existingDocumentId.HasValue
+                ? new Dictionary<string, string[]>
+                {
+                    ["existingDocumentId"] = [existingDocumentId.Value.ToString()]
+                }
+                : null,
             TraceId = HttpContext.TraceIdentifier
         });
     }

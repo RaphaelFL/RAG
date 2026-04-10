@@ -338,6 +338,8 @@ public class ApiContractTests : IClassFixture<WebApplicationFactory<Program>>
         var payload = await secondUpload.Content.ReadFromJsonAsync<ErrorResponseDto>(JsonOptions);
         payload.Should().NotBeNull();
         payload!.Code.Should().Be("document_conflict");
+        payload.Details.Should().NotBeNull();
+        payload.Details!["existingDocumentId"].Should().ContainSingle();
     }
 
     [Fact]

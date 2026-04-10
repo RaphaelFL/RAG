@@ -14,10 +14,28 @@ const developmentEnvFallback: Record<string, string> = {
   NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS: 'http://localhost:15214,https://localhost:15213,http://localhost:5000'
 };
 
+const publicEnv = {
+  NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  NEXT_PUBLIC_DEFAULT_BEARER_TOKEN: process.env.NEXT_PUBLIC_DEFAULT_BEARER_TOKEN,
+  NEXT_PUBLIC_AUTH_MODE: process.env.NEXT_PUBLIC_AUTH_MODE,
+  NEXT_PUBLIC_DEFAULT_TENANT_ID: process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID,
+  NEXT_PUBLIC_DEFAULT_USER_ID: process.env.NEXT_PUBLIC_DEFAULT_USER_ID,
+  NEXT_PUBLIC_DEFAULT_USER_ROLE: process.env.NEXT_PUBLIC_DEFAULT_USER_ROLE,
+  NEXT_PUBLIC_DEFAULT_TEMPLATE_ID: process.env.NEXT_PUBLIC_DEFAULT_TEMPLATE_ID,
+  NEXT_PUBLIC_DEFAULT_TEMPLATE_VERSION: process.env.NEXT_PUBLIC_DEFAULT_TEMPLATE_VERSION,
+  NEXT_PUBLIC_DEFAULT_USE_STREAMING: process.env.NEXT_PUBLIC_DEFAULT_USE_STREAMING,
+  NEXT_PUBLIC_DEFAULT_ALLOW_GENERAL_KNOWLEDGE: process.env.NEXT_PUBLIC_DEFAULT_ALLOW_GENERAL_KNOWLEDGE,
+  NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS: process.env.NEXT_PUBLIC_ALLOWED_CONNECT_ORIGINS
+} as const;
+
+type PublicEnvKey = keyof typeof publicEnv;
+
 export const publicRuntimeDefaults = {
   apiBaseUrl: requireEnv('NEXT_PUBLIC_API_BASE_URL'),
   token: readOptionalEnv('NEXT_PUBLIC_DEFAULT_BEARER_TOKEN'),
-  authMode: resolveAuthMode(readOptionalEnv('NEXT_PUBLIC_AUTH_MODE') || 'jwt'),
+  authMode: resolveAuthMode(
+    readOptionalEnv('NEXT_PUBLIC_AUTH_MODE') || inferDefaultAuthMode(requireEnv('NEXT_PUBLIC_API_BASE_URL'))
+  ),
   tenantId: requireEnv('NEXT_PUBLIC_DEFAULT_TENANT_ID'),
   userId: requireEnv('NEXT_PUBLIC_DEFAULT_USER_ID'),
   userRole: resolveDefaultUserRole(requireEnv('NEXT_PUBLIC_DEFAULT_USER_ROLE')),
@@ -50,6 +68,18 @@ function resolveAuthMode(value: string | undefined): RuntimeEnvironment['authMod
     default:
       throw new Error('NEXT_PUBLIC_AUTH_MODE possui um valor invalido.');
   }
+}
+
+function inferDefaultAuthMode(apiBaseUrl: string): RuntimeEnvironment['authMode'] {
+  const origin = tryGetOrigin(apiBaseUrl);
+  if (!origin) {
+    return 'jwt';
+  }
+
+  const hostname = new URL(origin).hostname.toLowerCase();
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+    ? 'development-headers'
+    : 'jwt';
 }
 
 function resolveDefaultUserRole(value: string | undefined): RuntimeEnvironment['userRole'] {
@@ -104,7 +134,7 @@ function resolveConnectSrcOrigins(value: string, apiBaseUrl: string) {
   return Array.from(origins);
 }
 
-function requireEnv(key: string) {
+function requireEnv(key: PublicEnvKey) {
   const value = readEnvValue(key);
   if (!value?.trim()) {
     throw new Error(`${key} e obrigatoria no web/.env.`);
@@ -113,12 +143,12 @@ function requireEnv(key: string) {
   return value.trim();
 }
 
-function readOptionalEnv(key: string) {
+function readOptionalEnv(key: PublicEnvKey) {
   return readEnvValue(key)?.trim() ?? '';
 }
 
-function readEnvValue(key: string) {
-  const value = process.env[key]?.trim();
+function readEnvValue(key: PublicEnvKey) {
+  const value = publicEnv[key]?.trim();
   if (value) {
     return value;
   }

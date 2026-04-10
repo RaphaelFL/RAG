@@ -1,0 +1,7 @@
+{
+  "/api/runtime/environment/route": "app/api/runtime/environment/route.js",
+  "/api/proxy/[...path]/route": "app/api/proxy/[...path]/route.js",
+  "/inspecao-documental/page": "app/inspecao-documental/page.js",
+  "/page": "app/page.js",
+  "/inspecao-documental/[documentId]/page": "app/inspecao-documental/[documentId]/page.js"
+}
