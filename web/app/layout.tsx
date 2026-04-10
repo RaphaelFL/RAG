@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'RAG Console',
   description: 'Frontend do chatbot corporativo com RAG, streaming, upload e historico.',

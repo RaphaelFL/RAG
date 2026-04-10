@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Claims;
 using System.Text;
 using Chatbot.Api.Authentication;
@@ -19,7 +20,7 @@ public static class ApiAuthenticationRegistration
             .AddPolicyScheme("SmartAuth", "JWT or development header auth", options =>
             {
                 options.ForwardDefaultSelector = context =>
-                    builder.Environment.IsDevelopment() && IsDevelopmentHeaderRequest(context.Request)
+                    IsDevelopmentHeaderRequest(context.Request) && (builder.Environment.IsDevelopment() || IsLoopbackRequest(context.Request))
                         ? "DevHeaderBearer"
                         : JwtBearerDefaults.AuthenticationScheme;
             })
@@ -100,6 +101,20 @@ public static class ApiAuthenticationRegistration
         return request.Headers.ContainsKey("X-Tenant-Id")
             || request.Headers.ContainsKey("X-User-Id")
             || request.Headers.ContainsKey("X-User-Role");
+    }
+
+    private static bool IsLoopbackRequest(HttpRequest request)
+    {
+        var remoteIp = request.HttpContext.Connection.RemoteIpAddress;
+        if (remoteIp is not null && IPAddress.IsLoopback(remoteIp))
+        {
+            return true;
+        }
+
+        var host = request.Host.Host;
+        return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
     }
 
     private static SecurityKey? ResolveSigningKey(JwtOptions jwtOptions)

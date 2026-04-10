@@ -45,7 +45,7 @@ export function detectDocumentFormat(fileName: string, contentType: string): Sup
 export function normalizeTextForMatching(value: string) {
   return value
     .replaceAll(/\r\n?/g, '\n')
-    .replaceAll(/\u00a0/g, ' ')
+    .replaceAll('\u00a0', ' ')
     .replaceAll(/[\t\f\v ]+/g, ' ')
     .replaceAll(/\n{3,}/g, '\n\n')
     .trim();
@@ -58,7 +58,14 @@ export function buildNormalizedIndex(value: string) {
 
   for (let index = 0; index < value.length; index += 1) {
     const current = value[index];
-    const normalizedChar = current === '\r' ? '' : current === '\n' || /\s/.test(current) ? ' ' : current;
+    let normalizedChar = current;
+
+    if (current === '\r') {
+      normalizedChar = '';
+    } else if (current === '\n' || /\s/.test(current)) {
+      normalizedChar = ' ';
+    }
+
     if (!normalizedChar) {
       continue;
     }
@@ -85,8 +92,9 @@ export function buildNormalizedIndex(value: string) {
 
 export function computeStableHash(value: string) {
   let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
+
+  for (const symbol of value) {
+    hash ^= symbol.codePointAt(0) ?? 0;
     hash = Math.imul(hash, 16777619);
   }
 
@@ -113,8 +121,13 @@ function renderNodeToHtml(node: DocumentNode): string {
       return `<span${style}>${escapeHtml(node.text)}</span>`;
     case 'line-break':
       return '<br />';
-    case 'image':
-      return `<figure${style}><img src="${escapeHtml(node.src)}" alt="${escapeHtml(node.alt ?? '')}" />${node.caption ? `<figcaption>${escapeHtml(node.caption)}</figcaption>` : ''}</figure>`;
+    case 'image': {
+      const captionHtml = node.caption
+        ? `<figcaption>${escapeHtml(node.caption)}</figcaption>`
+        : '';
+
+      return `<figure${style}><img src="${escapeHtml(node.src)}" alt="${escapeHtml(node.alt ?? '')}" />${captionHtml}</figure>`;
+    }
     case 'heading': {
       const level = Math.min(Math.max(node.level ?? 2, 1), 6);
       return `<h${level}${style}>${node.children.map(renderNodeToHtml).join('')}</h${level}>`;

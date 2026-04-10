@@ -5,7 +5,10 @@ import { buildCsp } from '@/lib/csp';
 export function middleware(request: NextRequest) {
   const nonce = createNonce();
   const isDevelopment = process.env.NODE_ENV !== 'production';
+  const csp = buildCsp(nonce, isDevelopment);
   const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('Content-Security-Policy', csp);
+  requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('x-csp-nonce', nonce);
 
   const response = NextResponse.next({
@@ -14,8 +17,8 @@ export function middleware(request: NextRequest) {
     }
   });
 
-  const csp = buildCsp(nonce, isDevelopment);
   response.headers.set('Content-Security-Policy', csp);
+  response.headers.set('x-nonce', nonce);
   response.headers.set('x-csp-nonce', nonce);
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('X-Content-Type-Options', 'nosniff');
