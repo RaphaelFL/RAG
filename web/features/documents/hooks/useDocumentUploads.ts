@@ -3,10 +3,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '@/lib/http';
 import { bulkReindexDocuments, getDocument, reindexDocument, suggestDocumentMetadata, uploadDocument } from '@/features/documents/api/documentsApi';
+import { parseDocumentBlob } from '@/features/documents/viewer/parsers';
+import { extractPlainText } from '@/features/documents/viewer/utils';
+import type { DocumentNode } from '@/features/documents/viewer/types';
 import type { RuntimeEnvironment } from '@/types/app';
 import type { BulkReindexResponse, DocumentDetails, DocumentStatus, DocumentUploadModel } from '@/features/documents/types/documents';
 
 const TERMINAL_DOCUMENT_STATUSES = new Set<DocumentStatus>(['Indexed', 'Failed', 'Archived', 'Deleted']);
+const PDF_MIME_TYPE = 'application/pdf';
+
+type UploadDocumentExtraction = {
+  extractedText: string;
+  extractedPages: Array<{
+    pageNumber: number;
+    text: string;
+  }>;
+};
 
 function shouldAutoRefresh(status: DocumentStatus | 'sending') {
   return status !== 'sending' && !TERMINAL_DOCUMENT_STATUSES.has(status);
@@ -82,6 +94,7 @@ export function useDocumentUploads(environment: RuntimeEnvironment, conversation
   const refreshTimersRef = useRef(new Map<string, ReturnType<typeof globalThis.setTimeout>>());
   const refreshAttemptsRef = useRef(new Map<string, number>());
   const inFlightRefreshesRef = useRef(new Set<string>());
+  const extractionCacheRef = useRef(new WeakMap<File, Promise<UploadDocumentExtraction | null>>());
 
   function clearRefreshTimer(documentId: string) {
     const timer = refreshTimersRef.current.get(documentId);
@@ -95,7 +108,12 @@ export function useDocumentUploads(environment: RuntimeEnvironment, conversation
     setError(null);
 
     try {
-      return await suggestDocumentMetadata(environment, { file });
+      const extraction = await getClientExtraction(file);
+      return await suggestDocumentMetadata(environment, {
+        file,
+        extractedText: extraction?.extractedText,
+        extractedPages: extraction?.extractedPages
+      });
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Falha ao analisar o documento';
       setError(message);
@@ -127,13 +145,16 @@ export function useDocumentUploads(environment: RuntimeEnvironment, conversation
     ]);
 
     try {
+      const extraction = await getClientExtraction(input.file);
       const result = await uploadDocument(environment, {
         file: input.file,
         documentTitle: input.title,
         category: input.category,
         categories: input.categories,
         tags: input.tags,
-        source: input.source
+        source: input.source,
+        extractedText: extraction?.extractedText,
+        extractedPages: extraction?.extractedPages
       });
 
       setAllUploads((current) =>
@@ -192,6 +213,17 @@ export function useDocumentUploads(environment: RuntimeEnvironment, conversation
         )
       );
     }
+  }
+
+  function getClientExtraction(file: File) {
+    const cached = extractionCacheRef.current.get(file);
+    if (cached) {
+      return cached;
+    }
+
+    const pending = extractClientExtraction(file);
+    extractionCacheRef.current.set(file, pending);
+    return pending;
   }
 
   async function triggerReindex(documentId: string, fullReindex: boolean) {
@@ -355,4 +387,43 @@ export function useDocumentUploads(environment: RuntimeEnvironment, conversation
     triggerReindex,
     triggerTenantFullReindex
   };
+}
+
+async function extractClientExtraction(file: File): Promise<UploadDocumentExtraction | null> {
+  if (!isPdfFile(file)) {
+    return null;
+  }
+
+  try {
+    const parsed = await parseDocumentBlob({
+      documentId: crypto.randomUUID(),
+      title: file.name,
+      originalFileName: file.name,
+      contentType: file.type || PDF_MIME_TYPE,
+      blob: file
+    });
+    const extractedPages = parsed.model.root
+      .filter((node): node is DocumentNode & { kind: 'page' } => node.kind === 'page')
+      .map((node, index) => ({
+        pageNumber: node.sourceMap?.pageNumber ?? index + 1,
+        text: extractPlainText(node.children).trim()
+      }))
+      .filter((page) => page.text.length > 0);
+    const extractedText = parsed.model.plainText.trim();
+
+    if (!extractedText) {
+      return null;
+    }
+
+    return {
+      extractedText,
+      extractedPages
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isPdfFile(file: File) {
+  return file.type === PDF_MIME_TYPE || file.name.toLowerCase().endsWith('.pdf');
 }

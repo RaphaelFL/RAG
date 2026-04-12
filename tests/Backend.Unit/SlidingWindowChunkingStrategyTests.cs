@@ -58,4 +58,89 @@ public class SlidingWindowChunkingStrategyTests
         chunks.Should().OnlyContain(chunk => chunk.Metadata.ContainsKey("estimatedTokens"));
     }
 
+    [Fact]
+    public void Chunk_ShouldIncreaseGranularity_ForLargerPdfSize_UsingSameRuntimeBaseline()
+    {
+        var sut = new SlidingWindowChunkingStrategy(new TestRagRuntimeSettings());
+        var extraction = CreateNarrativeExtraction(4);
+
+        var smallPdfChunks = sut.Chunk(CreateCommand(contentLength: 300_000), extraction);
+        var largePdfChunks = sut.Chunk(CreateCommand(contentLength: 6_000_000), extraction);
+
+        largePdfChunks.Count.Should().BeGreaterThan(smallPdfChunks.Count);
+    }
+
+    [Fact]
+    public void Chunk_ShouldRespectAdminRuntimeChunkSize_AsBaseline()
+    {
+        var extraction = CreateNarrativeExtraction(4);
+        var smallWindowChunks = new SlidingWindowChunkingStrategy(new ConfigurableRagRuntimeSettings(narrativeChunkSize: 160, narrativeOverlap: 48))
+            .Chunk(CreateCommand(contentLength: 300_000), extraction);
+        var largeWindowChunks = new SlidingWindowChunkingStrategy(new ConfigurableRagRuntimeSettings(narrativeChunkSize: 320, narrativeOverlap: 96))
+            .Chunk(CreateCommand(contentLength: 300_000), extraction);
+
+        smallWindowChunks.Count.Should().BeGreaterThan(largeWindowChunks.Count);
+    }
+
+    private static IngestDocumentCommand CreateCommand(long contentLength)
+    {
+        return new IngestDocumentCommand
+        {
+            DocumentId = Guid.NewGuid(),
+            TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            FileName = "manual.pdf",
+            ContentType = "application/pdf",
+            DocumentTitle = "Manual Operacional",
+            Source = "frontend-console",
+            ContentLength = contentLength
+        };
+    }
+
+    private static DocumentTextExtractionResultDto CreateNarrativeExtraction(int pageCount)
+    {
+        var pages = Enumerable.Range(1, pageCount)
+            .Select(pageNumber => new PageExtractionDto
+            {
+                PageNumber = pageNumber,
+                Text = string.Join(' ', new[]
+                {
+                    $"A pagina {pageNumber} detalha a validacao operacional antes do prosseguimento.",
+                    "Cada etapa precisa manter contexto suficiente para auditoria e consulta posterior.",
+                    "O fluxo registra criterios de aprovacao, excecoes e responsabilidades da equipe." 
+                })
+            })
+            .ToList();
+
+        return new DocumentTextExtractionResultDto
+        {
+            Text = string.Join("\n\n", pages.Select(page => page.Text)),
+            Pages = pages
+        };
+    }
+
+    private sealed class ConfigurableRagRuntimeSettings : IRagRuntimeSettings
+    {
+        public ConfigurableRagRuntimeSettings(int narrativeChunkSize, int narrativeOverlap)
+        {
+            NarrativeChunkSize = narrativeChunkSize;
+            NarrativeOverlap = narrativeOverlap;
+        }
+
+        public int DenseChunkSize => 180;
+        public int DenseOverlap => 72;
+        public int NarrativeChunkSize { get; }
+        public int NarrativeOverlap { get; }
+        public int MinimumChunkCharacters => 40;
+        public int RetrievalCandidateMultiplier => 3;
+        public int RetrievalMaxCandidateCount => 24;
+        public int MaxContextChunks => 4;
+        public double MinimumRerankScore => 0.1;
+        public double ExactMatchBoost => 0.18;
+        public double TitleMatchBoost => 0.08;
+        public double FilterMatchBoost => 0.05;
+        public TimeSpan RetrievalCacheTtl => TimeSpan.FromMinutes(5);
+        public TimeSpan ChatCompletionCacheTtl => TimeSpan.FromMinutes(10);
+        public TimeSpan EmbeddingCacheTtl => TimeSpan.FromHours(24);
+    }
+
 }

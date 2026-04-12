@@ -1,67 +1,16 @@
-# Agentes Externos Locais
+# Runtime Local
 
-Este repositório inclui a base `external/openclaude` para rodar o OpenClaude lado a lado com o backend.
+O OpenClaude deixou de fazer parte do fluxo operacional deste workspace.
 
-## Estrutura local adotada
+As responsabilidades locais de chat, orquestração e ferramentas agora ficam concentradas na API.
+
+## Fluxo local atual
 
 ```text
-external/
-  openclaude/
-scripts/
-  run-api.ps1
-  run-openclaude.ps1
-  run-agent-stack.ps1
+frontend -> Chatbot.Api -> Ollama
 ```
 
-## OpenClaude
-
-Uso principal neste workspace:
-
-- CLI agentic multi-provider
-- teste rápido com APIs compatíveis
-- execução local quando o ambiente estiver configurado
-
-O fluxo local principal do produto passa por frontend -> Chatbot.Api -> Ollama.
-Ja `scripts/run-openclaude.ps1` continua sendo apenas a janela interativa opcional.
-
-O script `scripts/run-openclaude.ps1` agora sobe o OpenClaude em modo local por padrão, apontando para o Ollama via API OpenAI-compatible em `http://localhost:11434/v1`.
-
-Modelo default adotado neste workspace:
-
-- `qwen2.5-coder:7b` para chat/coding no OpenClaude
-
-O script tenta usar o código local do repositório se `bun` estiver instalado. Se `bun` não existir na máquina, ele faz fallback para `npx @gitlawb/openclaude`.
-
-No estado atual desta máquina, o fallback via `npx` funciona, mas `rg` ainda nao esta no `PATH`. O CLI abre, porem recursos de busca local podem ficar limitados ate esse binario ser instalado.
-
-## Pré-requisitos locais
-
-- .NET 8 SDK
-- Node.js 20+
-- npm 10+
-- Ollama
-- ripgrep (`rg`) para busca completa no OpenClaude
-- opcional: `bun` para build local do OpenClaude
-
-Antes do primeiro uso:
-
-```powershell
-ollama pull qwen2.5-coder:7b
-ollama pull llava
-```
-
-## Como subir junto do backend
-
-Suba o OpenClaude aqui apenas se voce realmente quiser a ferramenta externa paralela.
-Para testar o chat principal do app, basta subir backend + frontend + Ollama.
-
-### Tudo em janelas separadas
-
-```powershell
-.\scripts\run-agent-stack.ps1
-```
-
-## Comandos individuais
+## Comandos recomendados
 
 ### Backend
 
@@ -69,22 +18,14 @@ Para testar o chat principal do app, basta subir backend + frontend + Ollama.
 .\scripts\run-api.ps1
 ```
 
-Esse e o processo que atende o chat principal da aplicacao usando Ollama direto no backend.
-
-### OpenClaude
+### Atalho legado
 
 ```powershell
-.\scripts\run-openclaude.ps1
+.\scripts\run-agent-stack.ps1
 ```
 
-Se quiser trocar o modelo:
+O atalho legado apenas abre a API local em uma janela separada.
 
-```powershell
-.\scripts\run-openclaude.ps1 -OllamaModel llama3.1:8b
-```
+## Observação
 
-Validação mínima:
-
-```powershell
-.\scripts\run-openclaude.ps1 -VersionOnly
-```
+O script `scripts/run-openclaude.ps1` foi mantido apenas para compatibilidade e informa que o runtime externo foi descontinuado neste workspace.

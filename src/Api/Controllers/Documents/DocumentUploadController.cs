@@ -42,7 +42,10 @@ public sealed class DocumentUploadController : DocumentControllerBase
     [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<DocumentMetadataSuggestionDto>> SuggestMetadata(IFormFile file, CancellationToken cancellationToken)
+    public async Task<ActionResult<DocumentMetadataSuggestionDto>> SuggestMetadata(
+        IFormFile file,
+        [FromForm] DocumentUploadFormData? formData,
+        CancellationToken cancellationToken)
     {
         _logger.LogInformation("Document metadata suggestion initiated: {filename}", file.FileName);
 
@@ -56,7 +59,7 @@ public sealed class DocumentUploadController : DocumentControllerBase
         try
         {
             await using var stream = file.OpenReadStream();
-            var command = _documentUploadCommandFactory.CreateSuggestionCommand(Guid.NewGuid(), GetRequiredTenantId(), file, stream);
+            var command = _documentUploadCommandFactory.CreateSuggestionCommand(Guid.NewGuid(), GetRequiredTenantId(), file, stream, formData);
             var suggestion = await _documentMetadataSuggestionService.SuggestAsync(command, cancellationToken);
             return Ok(suggestion);
         }

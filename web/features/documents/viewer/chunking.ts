@@ -20,8 +20,34 @@ export function buildViewerChunksFromInspection(
 
   return chunks.map((chunk) => {
     const sourceType = resolveChunkSourceType(chunk.section, chunk.pageNumber);
-    const matchedRange = matchDocumentRange(index, chunk.content);
+    const fallbackSourceMap = {
+      sourceType,
+      pageNumber: chunk.pageNumber || undefined,
+      endPageNumber: chunk.endPageNumber ?? undefined,
+      sectionTitle: chunk.section ?? undefined
+    } satisfies ChunkSourceMap;
+    const hasUnavailableContent = isUnavailableChunkContent(chunk.content, originalFileName);
+    const matchedRange = hasUnavailableContent ? undefined : matchDocumentRange(index, chunk.content);
+
     if (!matchedRange) {
+      const sourceProjection = buildChunkFromSourceProjection(model.root, {
+        chunkId: chunk.chunkId,
+        chunkIndex: chunk.chunkIndex,
+        documentId,
+        referenceFileName: originalFileName,
+        metadata: {
+          ...chunk.metadata,
+          embeddingDimensions: String(chunk.embedding.dimensions),
+          pageNumber: String(chunk.pageNumber),
+          section: chunk.section ?? ''
+        },
+        sourceMap: fallbackSourceMap
+      });
+
+      if (sourceProjection) {
+        return sourceProjection;
+      }
+
       return createFallbackChunk({
         chunkId: chunk.chunkId,
         documentId,
@@ -33,22 +59,12 @@ export function buildViewerChunksFromInspection(
           pageNumber: String(chunk.pageNumber),
           section: chunk.section ?? ''
         },
-        sourceMap: {
-          sourceType,
-          pageNumber: chunk.pageNumber || undefined,
-          endPageNumber: chunk.endPageNumber ?? undefined,
-          sectionTitle: chunk.section ?? undefined
-        }
+        sourceMap: fallbackSourceMap
       });
     }
 
     const formattedContent = projectNodesByRange(model.root, matchedRange.startOffset, matchedRange.endOffset, true);
-    const mergedSourceMap = mergeSourceMaps(formattedContent, {
-      sourceType,
-      pageNumber: chunk.pageNumber || undefined,
-      endPageNumber: chunk.endPageNumber ?? undefined,
-      sectionTitle: chunk.section ?? undefined
-    });
+    const mergedSourceMap = mergeSourceMaps(formattedContent, fallbackSourceMap);
     const headingAncestry = deriveHeadingAncestry(model.root, matchedRange.startOffset, matchedRange.endOffset);
     const rawText = chunk.content;
 
@@ -433,4 +449,107 @@ function resolveChunkSourceType(section: string | null | undefined, pageNumber: 
   }
 
   return 'range' as const;
+}
+
+function buildChunkFromSourceProjection(
+  nodes: DocumentNode[],
+  chunk: {
+    chunkId: string;
+    chunkIndex: number;
+    documentId: string;
+    referenceFileName: string;
+    metadata: Record<string, string>;
+    sourceMap: ChunkSourceMap;
+  }
+): ViewerChunk | null {
+  const formattedContent = projectNodesBySource(nodes, chunk.sourceMap);
+  if (formattedContent.length === 0) {
+    return null;
+  }
+
+  const rawText = formattedContent.map((node) => extractNodeText(node)).join('').trim();
+  if (!rawText) {
+    return null;
+  }
+
+  const mergedSourceMap = mergeSourceMaps(formattedContent, chunk.sourceMap);
+  const headingAncestry = mergedSourceMap.startOffset !== undefined && mergedSourceMap.endOffset !== undefined
+    ? deriveHeadingAncestry(nodes, mergedSourceMap.startOffset, mergedSourceMap.endOffset)
+    : [];
+
+  return {
+    chunkId: chunk.chunkId,
+    documentId: chunk.documentId,
+    chunkIndex: chunk.chunkIndex,
+    backendChunkId: chunk.chunkId,
+    strategyId: 'backend-synced',
+    sourceType: mergedSourceMap.sourceType,
+    rawText,
+    normalizedText: normalizeTextForMatching(rawText),
+    formattedContent,
+    formattedHtml: renderNodesToHtml(formattedContent),
+    contentHash: computeStableHash(rawText),
+    referenceFileName: chunk.referenceFileName,
+    parserVersion: mergedSourceMap.parserVersion ?? 'source-projection',
+    originLabel: buildOriginLabel(mergedSourceMap),
+    headingAncestry,
+    sourceMap: mergedSourceMap,
+    metadata: chunk.metadata,
+    fragments: [{
+      fragmentId: `${chunk.chunkId}-fragment`,
+      nodeIds: collectNodeIds(formattedContent),
+      sourceMap: mergedSourceMap
+    }],
+    sourceNodeIds: collectNodeIds(formattedContent),
+    confidence: 0.2
+  } satisfies ViewerChunk;
+}
+
+function projectNodesBySource(nodes: DocumentNode[], sourceMap: ChunkSourceMap) {
+  return nodes.flatMap((node) => projectNodeBySource(node, sourceMap)).filter(Boolean) as DocumentNode[];
+}
+
+function projectNodeBySource(node: DocumentNode, sourceMap: ChunkSourceMap): DocumentNode | null {
+  const nodeSourceMap = node.sourceMap;
+  if (nodeSourceMap && sourceMapMatches(nodeSourceMap, sourceMap)) {
+    return cloneNode(node);
+  }
+
+  if (!('children' in node)) {
+    return null;
+  }
+
+  const children = node.children
+    .flatMap((child) => projectNodeBySource(child, sourceMap))
+    .filter(Boolean) as DocumentNode[];
+
+  if (children.length === 0) {
+    return null;
+  }
+
+  return {
+    ...node,
+    children
+  };
+}
+
+function sourceMapMatches(candidate: ChunkSourceMap, target: ChunkSourceMap) {
+  if (target.sectionTitle && candidate.sectionTitle) {
+    return candidate.sectionTitle.localeCompare(target.sectionTitle, undefined, { sensitivity: 'accent' }) === 0;
+  }
+
+  if (target.pageNumber) {
+    const candidateStart = candidate.pageNumber ?? candidate.endPageNumber ?? 0;
+    const candidateEnd = candidate.endPageNumber ?? candidate.pageNumber ?? candidateStart;
+    const targetEnd = target.endPageNumber ?? target.pageNumber;
+    return candidateStart <= targetEnd && candidateEnd >= target.pageNumber;
+  }
+
+  return false;
+}
+
+function isUnavailableChunkContent(content: string, originalFileName: string) {
+  const normalizedContent = normalizeTextForMatching(content);
+  const normalizedFileName = normalizeTextForMatching(originalFileName);
+  return normalizedContent === `conteudo indisponivel para ${normalizedFileName}`;
 }

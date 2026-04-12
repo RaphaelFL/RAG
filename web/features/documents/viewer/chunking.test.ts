@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildLocalStrategyChunks } from '@/features/documents/viewer/chunking';
+import { buildLocalStrategyChunks, buildViewerChunksFromInspection } from '@/features/documents/viewer/chunking';
 import type { DocumentNode, UnifiedDocumentModel } from '@/features/documents/viewer/types';
 import { annotateTextRanges, createDocumentMetadata, extractPlainText, normalizeTextForMatching } from '@/features/documents/viewer/utils';
 
@@ -101,5 +101,52 @@ describe('buildLocalStrategyChunks', () => {
     expect(chunks).toHaveLength(2);
     expect(chunks[0].sourceMap.pageNumber).toBe(1);
     expect(chunks[1].sourceMap.pageNumber).toBe(2);
+  });
+
+  it('recupera conteudo estrutural pela pagina quando o backend persistiu placeholder indisponivel', () => {
+    const model = createModel([
+      {
+        id: 'page-1',
+        kind: 'page',
+        sourceMap: { sourceType: 'page', pageNumber: 1 },
+        children: [
+          {
+            id: 'page-1-paragraph',
+            kind: 'paragraph',
+            sourceMap: { sourceType: 'paragraph', pageNumber: 1 },
+            children: [
+              {
+                id: 'page-1-text',
+                kind: 'text',
+                text: 'Conteudo real recuperado do documento.',
+                sourceMap: { sourceType: 'paragraph', pageNumber: 1 }
+              }
+            ]
+          }
+        ]
+      }
+    ]);
+
+    const chunks = buildViewerChunksFromInspection(model, 'doc-1', 'My Gunnar.pdf', [{
+      chunkId: 'chunk-1',
+      chunkIndex: 1,
+      content: 'Conteudo indisponivel para My Gunnar.pdf',
+      characterCount: 40,
+      pageNumber: 1,
+      endPageNumber: null,
+      section: null,
+      metadata: {},
+      embedding: {
+        exists: false,
+        dimensions: 0,
+        preview: []
+      }
+    }]);
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].rawText).toContain('Conteudo real recuperado do documento.');
+    expect(chunks[0].rawText).not.toContain('Conteudo indisponivel');
+    expect(chunks[0].sourceMap.pageNumber).toBe(1);
+    expect(chunks[0].formattedContent.length).toBeGreaterThan(0);
   });
 });

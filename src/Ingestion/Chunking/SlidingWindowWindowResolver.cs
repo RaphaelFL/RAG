@@ -11,23 +11,48 @@ internal sealed class SlidingWindowWindowResolver
         _runtimeSettings = runtimeSettings;
     }
 
-    public int ResolveMaxTokens(string text)
+    public int ResolveMaxTokens(string text, long contentLength, int pageCount)
     {
-        var (chunkSize, _) = ResolveWindow(text);
+        var (chunkSize, _) = ResolveWindow(text, contentLength, pageCount);
         return Math.Max(32, EstimateTokens(chunkSize));
     }
 
-    public int ResolveOverlapTokens(string text)
+    public int ResolveOverlapTokens(string text, long contentLength, int pageCount)
     {
-        var (_, overlap) = ResolveWindow(text);
+        var (_, overlap) = ResolveWindow(text, contentLength, pageCount);
         return Math.Max(8, EstimateTokens(Math.Max(0, overlap)));
     }
 
-    private (int ChunkSize, int Overlap) ResolveWindow(string text)
+    private (int ChunkSize, int Overlap) ResolveWindow(string text, long contentLength, int pageCount)
     {
-        return IsDenseContent(text)
-            ? (Math.Max(_runtimeSettings.MinimumChunkCharacters, _runtimeSettings.DenseChunkSize), Math.Max(0, _runtimeSettings.DenseOverlap))
-            : (Math.Max(_runtimeSettings.MinimumChunkCharacters, _runtimeSettings.NarrativeChunkSize), Math.Max(0, _runtimeSettings.NarrativeOverlap));
+        var isDense = IsDenseContent(text);
+        var baseChunkSize = isDense ? _runtimeSettings.DenseChunkSize : _runtimeSettings.NarrativeChunkSize;
+        var baseOverlap = isDense ? _runtimeSettings.DenseOverlap : _runtimeSettings.NarrativeOverlap;
+        var scale = ResolveDocumentScale(text.Length, contentLength, pageCount, baseChunkSize);
+        var chunkSize = Math.Max(_runtimeSettings.MinimumChunkCharacters, (int)Math.Round(baseChunkSize * scale, MidpointRounding.AwayFromZero));
+        var overlap = Math.Max(0, (int)Math.Round(baseOverlap * scale, MidpointRounding.AwayFromZero));
+
+        return (chunkSize, Math.Min(Math.Max(0, chunkSize - 1), overlap));
+    }
+
+    private static double ResolveDocumentScale(int textLength, long contentLength, int pageCount, int baseChunkSize)
+    {
+        if (pageCount >= 20 || contentLength >= 12_000_000 || textLength >= baseChunkSize * 18)
+        {
+            return 0.7d;
+        }
+
+        if (pageCount >= 10 || contentLength >= 5_000_000 || textLength >= baseChunkSize * 10)
+        {
+            return 0.8d;
+        }
+
+        if (pageCount >= 5 || contentLength >= 1_500_000 || textLength >= baseChunkSize * 5)
+        {
+            return 0.9d;
+        }
+
+        return 1d;
     }
 
     private static int EstimateTokens(int characterCount)

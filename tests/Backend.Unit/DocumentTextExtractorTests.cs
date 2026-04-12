@@ -57,6 +57,50 @@ public class DocumentTextExtractorTests
     }
 
     [Fact]
+    public async Task ExtractAsync_ShouldPreferClientExtractedText_WhenProvided()
+    {
+        var ocrProvider = new TrackingOcrProvider { Text = "ocr extraido" };
+        var ocrOptions = Options.Create(new OcrOptions
+        {
+            PrimaryProvider = "AzureDocumentIntelligence",
+            FallbackProvider = "GoogleVision",
+            EnableFallback = true,
+            EnableSelectiveOcr = true,
+            MinimumDirectTextCharacters = 30,
+            MinimumDirectTextCoverageRatio = 0.01
+        });
+        var sut = new DocumentTextExtractor(
+            new[] { new DirectDocumentParser() },
+            ocrProvider,
+            new DocumentExtractionStrategyDecider(ocrOptions),
+            new DocumentExtractionResultBuilder());
+
+        await using var content = new MemoryStream(Encoding.Latin1.GetBytes("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF"));
+
+        var result = await sut.ExtractAsync(new IngestDocumentCommand
+        {
+            DocumentId = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            FileName = "manual.pdf",
+            ContentType = "application/pdf",
+            ContentLength = content.Length,
+            ClientExtractedText = "Pagina 1\nResumo executivo\n\nPagina 2\nDetalhes da arquitetura",
+            ClientExtractedPages = new List<PageExtractionDto>
+            {
+                new() { PageNumber = 1, Text = "Resumo executivo" },
+                new() { PageNumber = 2, Text = "Detalhes da arquitetura" }
+            },
+            Content = content
+        }, CancellationToken.None);
+
+        result.Strategy.Should().Be("client");
+        result.Provider.Should().Be("browser-upload");
+        result.Text.Should().Contain("Resumo executivo");
+        result.Pages.Should().HaveCount(2);
+        ocrProvider.CallCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task ExtractAsync_ShouldFallbackToOcr_ForImageDocuments()
     {
         var sut = CreateSut();

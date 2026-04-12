@@ -29,8 +29,9 @@ public sealed class SlidingWindowChunkingStrategy : IChunkingStrategy
     public List<DocumentChunkIndexDto> Chunk(IngestDocumentCommand command, DocumentTextExtractionResultDto extraction)
     {
         var sourceText = _paragraphBuilder.NormalizeSourceText(command, extraction.Text);
-        var maxTokens = _windowResolver.ResolveMaxTokens(sourceText);
-        var overlapTokens = _windowResolver.ResolveOverlapTokens(sourceText);
+        var pageCount = extraction.Pages.Count > 0 ? extraction.Pages.Count : 1;
+        var maxTokens = _windowResolver.ResolveMaxTokens(sourceText, command.ContentLength, pageCount);
+        var overlapTokens = _windowResolver.ResolveOverlapTokens(sourceText, command.ContentLength, pageCount);
         var paragraphs = _paragraphBuilder.Build(command, extraction, maxTokens);
         return _chunkFactory.Build(command, sourceText, paragraphs, maxTokens, overlapTokens);
     }

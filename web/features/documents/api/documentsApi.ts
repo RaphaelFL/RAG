@@ -7,10 +7,23 @@ export async function suggestDocumentMetadata(
   env: RuntimeEnvironment,
   input: {
     file: File;
+    extractedText?: string;
+    extractedPages?: Array<{
+      pageNumber: number;
+      text: string;
+    }>;
   }
 ) {
   const formData = new FormData();
   formData.append('file', input.file);
+
+  if (input.extractedText) {
+    formData.append('extractedText', input.extractedText);
+  }
+
+  if (input.extractedPages?.length) {
+    formData.append('extractedPagesJson', JSON.stringify(input.extractedPages));
+  }
 
   const response = await fetch(buildProxyUrl('/api/v1/documents/suggest-metadata'), {
     method: 'POST',
@@ -38,6 +51,11 @@ export async function uploadDocument(
     categories?: string[];
     tags?: string[];
     source?: string;
+    extractedText?: string;
+    extractedPages?: Array<{
+      pageNumber: number;
+      text: string;
+    }>;
   }
 ) {
   const formData = new FormData();
@@ -61,6 +79,14 @@ export async function uploadDocument(
 
   if (input.source) {
     formData.append('source', input.source);
+  }
+
+  if (input.extractedText) {
+    formData.append('extractedText', input.extractedText);
+  }
+
+  if (input.extractedPages?.length) {
+    formData.append('extractedPagesJson', JSON.stringify(input.extractedPages));
   }
 
   const response = await fetch(buildProxyUrl('/api/v1/documents/ingest'), {

@@ -81,24 +81,5 @@ docs/13-acp.md
 **/*acp*.md
 **/*ACP*.md
 
-# OpenClaude vendorizado: manter o necessario para instalar, buildar e executar na branch
-external/openclaude/**
-!external/openclaude/.env.example
-!external/openclaude/LICENSE
-!external/openclaude/README.md
-!external/openclaude/atomic_chat_provider.py
-!external/openclaude/bin/
-!external/openclaude/bin/**
-!external/openclaude/bun.lock
-!external/openclaude/ollama_provider.py
-!external/openclaude/package.json
-!external/openclaude/scripts/
-!external/openclaude/scripts/**
-!external/openclaude/smart_router.py
-!external/openclaude/src/
-!external/openclaude/src/**
-!external/openclaude/tsconfig.json
-external/openclaude/bin/*.test.*
-external/openclaude/src/**/*.test.*
-external/openclaude/src/**/*.spec.*
-external/openclaude/test_*.py
+# OpenClaude deixou de fazer parte do fluxo principal do workspace
+external/openclaude/

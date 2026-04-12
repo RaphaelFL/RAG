@@ -14,5 +14,7 @@ public class IngestDocumentCommand
     public string? Source { get; set; }
     public string? ExternalId { get; set; }
     public string? AccessPolicy { get; set; }
+    public string? ClientExtractedText { get; set; }
+    public List<PageExtractionDto> ClientExtractedPages { get; set; } = new();
     public Stream Content { get; set; } = Stream.Null;
 }

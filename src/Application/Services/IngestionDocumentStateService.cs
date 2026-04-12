@@ -77,6 +77,8 @@ public sealed class IngestionDocumentStateService : IIngestionDocumentStateServi
         }
 
         document.Status = DocumentStatuses.Failed;
+        document.IndexedChunkCount = 0;
+        document.Chunks = new List<DocumentChunkIndexDto>();
         document.UpdatedAtUtc = DateTime.UtcNow;
         document.LastJobId = jobId;
         _documentCatalog.Upsert(document);

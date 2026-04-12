@@ -51,6 +51,16 @@ public sealed class IngestionBackgroundJobHandler : IIngestionBackgroundJobHandl
                 _ingestionDocumentStateService.UpdateStatus(job.DocumentId, DocumentStatuses.OcrProcessing, job.JobId);
             }
 
+            if (IsFallbackOnlyExtraction(extracted, command.FileName))
+            {
+                _logger.LogWarning(
+                    "Document {documentId} extraction returned only fallback placeholder for {fileName}; aborting indexing",
+                    job.DocumentId,
+                    command.FileName);
+                _ingestionDocumentStateService.MarkIngestionFailure(job.DocumentId, job.JobId);
+                return;
+            }
+
             _ingestionDocumentStateService.UpdateStatus(job.DocumentId, DocumentStatuses.Chunking, job.JobId);
             var chunks = _chunkingStrategy.Chunk(command, extracted);
             _ingestionDocumentStateService.UpdateStatus(job.DocumentId, DocumentStatuses.Embedding, job.JobId);
@@ -73,5 +83,18 @@ public sealed class IngestionBackgroundJobHandler : IIngestionBackgroundJobHandl
             _logger.LogError(ex, "Error ingesting document {documentId}", job.DocumentId);
             _ingestionDocumentStateService.MarkIngestionFailure(job.DocumentId, job.JobId);
         }
+    }
+
+    private static bool IsFallbackOnlyExtraction(DocumentTextExtractionResultDto extracted, string fileName)
+    {
+        var fallbackText = $"Conteudo indisponivel para {fileName}";
+        if (!string.Equals(extracted.Text.Trim(), fallbackText, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return extracted.Pages.Count == 0 || extracted.Pages.All(page =>
+            string.IsNullOrWhiteSpace(page.Text) ||
+            string.Equals(page.Text.Trim(), fallbackText, StringComparison.Ordinal));
     }
 }

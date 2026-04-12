@@ -24,6 +24,12 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
 
     public async Task<DocumentTextExtractionResultDto> ExtractAsync(IngestDocumentCommand command, CancellationToken ct)
     {
+        var clientExtractedText = ResolveClientExtractedText(command);
+        if (!string.IsNullOrWhiteSpace(clientExtractedText))
+        {
+            return _documentExtractionResultBuilder.Build(clientExtractedText, "client", "browser-upload", command.ClientExtractedPages, null);
+        }
+
         DocumentParseResultDto? parseResult = null;
         string? parsedText = null;
 
@@ -61,5 +67,26 @@ public sealed class DocumentTextExtractor : IDocumentTextExtractor
 
         var ocrResult = await _ocrProvider.ExtractAsync(command.Content, command.FileName, ct);
         return _documentExtractionResultBuilder.Build(ocrResult.ExtractedText, "ocr", ocrResult.Provider ?? _ocrProvider.ProviderName, ocrResult.Pages, null);
+    }
+
+    private static string? ResolveClientExtractedText(IngestDocumentCommand command)
+    {
+        if (!string.IsNullOrWhiteSpace(command.ClientExtractedText))
+        {
+            return command.ClientExtractedText;
+        }
+
+        if (command.ClientExtractedPages.Count == 0)
+        {
+            return null;
+        }
+
+        var text = string.Join("\n\n", command.ClientExtractedPages
+            .OrderBy(page => page.PageNumber)
+            .Select(page => page.Text)
+            .Where(pageText => !string.IsNullOrWhiteSpace(pageText)))
+            .Trim();
+
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 }

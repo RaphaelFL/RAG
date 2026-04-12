@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Api\Chatbot.Api.csproj" />
     <ProjectReference Include="..\..\src\Application\Chatbot.Application.csproj" />
     <ProjectReference Include="..\..\src\Ingestion\Chatbot.Ingestion.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\Chatbot.Infrastructure.csproj" />

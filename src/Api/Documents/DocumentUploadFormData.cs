@@ -9,4 +9,6 @@ public class DocumentUploadFormData
 	public string? Source { get; set; }
 	public string? ExternalId { get; set; }
 	public string? AccessPolicy { get; set; }
+	public string? ExtractedText { get; set; }
+	public string? ExtractedPagesJson { get; set; }
 }

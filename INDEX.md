@@ -57,7 +57,6 @@
 |---------|--------|
 | `scripts/run-api.ps1` | sobe a API local |
 | `scripts/stop-chatbot-api.ps1` | encerra a API local |
-| `scripts/run-agent-stack.ps1` | sobe stack com OpenClaude |
-| `scripts/run-openclaude.ps1` | sobe OpenClaude usando Ollama |
+| `scripts/run-agent-stack.ps1` | atalho legado para abrir a API local em janela separada |
 | `src/Api/appsettings.json` | baseline local da API |
 | `secrets.json` | segredos locais gitignored |

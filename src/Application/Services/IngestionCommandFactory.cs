@@ -18,6 +18,19 @@ public sealed class IngestionCommandFactory : IIngestionCommandFactory
             Source = job.Source,
             ExternalId = job.ExternalId,
             AccessPolicy = job.AccessPolicy,
+            ClientExtractedText = job.ClientExtractedText,
+            ClientExtractedPages = job.ClientExtractedPages.Select(page => new PageExtractionDto
+            {
+                PageNumber = page.PageNumber,
+                Text = page.Text,
+                WorksheetName = page.WorksheetName,
+                SlideNumber = page.SlideNumber,
+                SectionTitle = page.SectionTitle,
+                TableId = page.TableId,
+                FormId = page.FormId,
+                Metadata = new Dictionary<string, string>(page.Metadata, StringComparer.OrdinalIgnoreCase),
+                Tables = page.Tables
+            }).ToList(),
             Content = new MemoryStream(job.Payload, writable: false)
         };
     }
@@ -42,6 +55,19 @@ public sealed class IngestionCommandFactory : IIngestionCommandFactory
             Source = document.Source,
             ExternalId = document.ExternalId,
             AccessPolicy = document.AccessPolicy,
+            ClientExtractedText = document.ClientExtractedText,
+            ClientExtractedPages = document.ClientExtractedPages.Select(page => new PageExtractionDto
+            {
+                PageNumber = page.PageNumber,
+                Text = page.Text,
+                WorksheetName = page.WorksheetName,
+                SlideNumber = page.SlideNumber,
+                SectionTitle = page.SectionTitle,
+                TableId = page.TableId,
+                FormId = page.FormId,
+                Metadata = new Dictionary<string, string>(page.Metadata, StringComparer.OrdinalIgnoreCase),
+                Tables = page.Tables
+            }).ToList(),
             Content = new MemoryStream(payload, writable: false)
         };
     }

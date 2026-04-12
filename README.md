@@ -104,22 +104,17 @@ npm run dev
 
 O frontend sobe em http://localhost:3000 no ambiente local.
 
-### 4.1. Rodar agentes externos ao lado do backend
+### 4.1. Runtime agentico local
 
-O OpenClaude continua opcional e serve apenas para uso interativo paralelo.
+O fluxo local agentico agora fica concentrado na própria API.
 
-Para subir OpenClaude em paralelo com a API local, use:
+Para testar o chat principal e as capacidades locais de orquestração, basta manter frontend, API e Ollama ativos.
+
+Se você ainda usa o atalho legado para abrir a API em outra janela, pode chamar:
 
 ```bash
 .\scripts\run-agent-stack.ps1
 ```
-
-O guia operacional dessa stack fica em [EXTERNAL_AGENTS.md](EXTERNAL_AGENTS.md).
-
-O `scripts/run-openclaude.ps1` usa Ollama por padrão com:
-
-- base URL `http://localhost:11434/v1`
-- modelo de chat `qwen2.5-coder:7b`
 
 ### 5. Portas da stack local
 
@@ -153,9 +148,9 @@ Servicos do compose:
 .\scripts\stop-chatbot-api.ps1
 ```
 
-### Frontend e OpenClaude
+### Frontend
 
-Encerre as janelas de terminal abertas por `npm run dev`, `scripts/run-openclaude.ps1` ou `scripts/run-agent-stack.ps1`.
+Encerre as janelas de terminal abertas por `npm run dev` ou `scripts/run-agent-stack.ps1`.
 
 ### Ollama
 

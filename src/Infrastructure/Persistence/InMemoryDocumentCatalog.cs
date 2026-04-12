@@ -83,6 +83,19 @@ public sealed class InMemoryDocumentCatalog : IDocumentCatalog
             Categories = new List<string>(source.Categories),
             ExternalId = source.ExternalId,
             AccessPolicy = source.AccessPolicy,
+            ClientExtractedText = source.ClientExtractedText,
+            ClientExtractedPages = source.ClientExtractedPages.Select(page => new PageExtractionDto
+            {
+                PageNumber = page.PageNumber,
+                Text = page.Text,
+                WorksheetName = page.WorksheetName,
+                SlideNumber = page.SlideNumber,
+                SectionTitle = page.SectionTitle,
+                TableId = page.TableId,
+                FormId = page.FormId,
+                Metadata = new Dictionary<string, string>(page.Metadata, StringComparer.OrdinalIgnoreCase),
+                Tables = page.Tables
+            }).ToList(),
             StoragePath = source.StoragePath,
             QuarantinePath = source.QuarantinePath,
             LastJobId = source.LastJobId,

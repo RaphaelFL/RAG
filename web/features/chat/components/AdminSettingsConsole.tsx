@@ -316,7 +316,7 @@ function RuntimeTuningPanel({
       <div className="panel-header">
         <div>
           <h2>Runtime RAG</h2>
-          <p>Ajustes operacionais em memoria para chunking, contexto e TTL.</p>
+          <p>Ajustes operacionais em memoria para chunking, contexto e TTL. Os tamanhos de chunk funcionam como base e PDFs maiores podem usar uma janela mais granular automaticamente.</p>
         </div>
         {isLoading ? <span className="badge badge-warning">Carregando</span> : <span className="badge badge-success">Admin</span>}
       </div>
@@ -346,7 +346,7 @@ function RuntimeTuningPanel({
           </div>
 
           {currentSettings ? (
-            <p className="muted-copy">Config atual ativa: contexto {currentSettings.maxContextChunks}, dense chunk {currentSettings.denseChunkSize}, retrieval TTL {currentSettings.retrievalCacheTtlSeconds}s.</p>
+            <p className="muted-copy">Config atual ativa: contexto {currentSettings.maxContextChunks}, dense chunk base {currentSettings.denseChunkSize}, retrieval TTL {currentSettings.retrievalCacheTtlSeconds}s.</p>
           ) : null}
 
           <div className="button-row">

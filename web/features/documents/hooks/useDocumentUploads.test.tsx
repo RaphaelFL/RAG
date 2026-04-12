@@ -11,7 +11,12 @@ const documentApiMocks = vi.hoisted(() => ({
   bulkReindexDocuments: vi.fn()
 }));
 
+const viewerParserMocks = vi.hoisted(() => ({
+  parseDocumentBlob: vi.fn()
+}));
+
 vi.mock('@/features/documents/api/documentsApi', () => documentApiMocks);
+vi.mock('@/features/documents/viewer/parsers', () => viewerParserMocks);
 
 const environment = {
   apiBaseUrl: 'http://localhost:5000',
@@ -26,6 +31,43 @@ describe('useDocumentUploads', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+    viewerParserMocks.parseDocumentBlob.mockResolvedValue({
+      model: {
+        plainText: 'Resumo executivo\n\nDetalhes da arquitetura',
+        root: [
+          {
+            id: 'page-1',
+            kind: 'page',
+            children: [
+              {
+                id: 'text-1',
+                kind: 'text',
+                text: 'Resumo executivo'
+              }
+            ],
+            sourceMap: {
+              sourceType: 'page',
+              pageNumber: 1
+            }
+          },
+          {
+            id: 'page-2',
+            kind: 'page',
+            children: [
+              {
+                id: 'text-2',
+                kind: 'text',
+                text: 'Detalhes da arquitetura'
+              }
+            ],
+            sourceMap: {
+              sourceType: 'page',
+              pageNumber: 2
+            }
+          }
+        ]
+      }
+    });
   });
 
   afterEach(() => {
@@ -51,6 +93,35 @@ describe('useDocumentUploads', () => {
 
     expect(suggestion?.suggestedCategory).toBe('financeiro');
     expect(suggestion?.suggestedTags).toContain('reembolso');
+    expect(viewerParserMocks.parseDocumentBlob).not.toHaveBeenCalled();
+  });
+
+  it('envia texto extraido no cliente para sugestao de metadata em PDFs', async () => {
+    documentApiMocks.suggestDocumentMetadata.mockResolvedValue({
+      suggestedTitle: 'Manual tecnico',
+      suggestedCategory: 'arquitetura',
+      suggestedCategories: ['arquitetura'],
+      suggestedTags: ['manual'],
+      strategy: 'heuristic-client',
+      previewText: 'Resumo executivo'
+    });
+
+    const { result } = renderHook(() => useDocumentUploads(environment, 'session-1'));
+    const file = new File(['conteudo'], 'manual.pdf', { type: 'application/pdf' });
+
+    await act(async () => {
+      await result.current.suggestUploadMetadata(file);
+    });
+
+    expect(viewerParserMocks.parseDocumentBlob).toHaveBeenCalledTimes(1);
+    expect(documentApiMocks.suggestDocumentMetadata).toHaveBeenCalledWith(environment, expect.objectContaining({
+      file,
+      extractedText: 'Resumo executivo\n\nDetalhes da arquitetura',
+      extractedPages: [
+        { pageNumber: 1, text: 'Resumo executivo' },
+        { pageNumber: 2, text: 'Detalhes da arquitetura' }
+      ]
+    }));
   });
 
   it('mantem o status inicial retornado pelo backend logo apos o upload', async () => {
@@ -83,6 +154,13 @@ describe('useDocumentUploads', () => {
     });
 
     expect(documentApiMocks.getDocument).not.toHaveBeenCalled();
+    expect(documentApiMocks.uploadDocument).toHaveBeenCalledWith(environment, expect.objectContaining({
+      extractedText: 'Resumo executivo\n\nDetalhes da arquitetura',
+      extractedPages: [
+        { pageNumber: 1, text: 'Resumo executivo' },
+        { pageNumber: 2, text: 'Detalhes da arquitetura' }
+      ]
+    }));
   });
 
   it('reaproveita o documento existente quando o backend sinaliza conflito por duplicidade', async () => {

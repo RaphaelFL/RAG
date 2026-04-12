@@ -39,6 +39,19 @@ public sealed class IngestionCatalogEntryFactory : IIngestionCatalogEntryFactory
             Category = command.Category,
             ExternalId = command.ExternalId,
             AccessPolicy = command.AccessPolicy,
+            ClientExtractedText = command.ClientExtractedText,
+            ClientExtractedPages = command.ClientExtractedPages.Select(page => new PageExtractionDto
+            {
+                PageNumber = page.PageNumber,
+                Text = page.Text,
+                WorksheetName = page.WorksheetName,
+                SlideNumber = page.SlideNumber,
+                SectionTitle = page.SectionTitle,
+                TableId = page.TableId,
+                FormId = page.FormId,
+                Metadata = new Dictionary<string, string>(page.Metadata, StringComparer.OrdinalIgnoreCase),
+                Tables = page.Tables
+            }).ToList(),
             StoragePath = context.StoragePath,
             LastJobId = jobId,
             IndexedChunkCount = 0,

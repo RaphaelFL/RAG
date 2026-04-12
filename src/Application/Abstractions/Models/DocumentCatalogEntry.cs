@@ -16,6 +16,8 @@ public class DocumentCatalogEntry
     public List<string> Categories { get; set; } = new();
     public string? ExternalId { get; set; }
     public string? AccessPolicy { get; set; }
+    public string? ClientExtractedText { get; set; }
+    public List<PageExtractionDto> ClientExtractedPages { get; set; } = new();
     public string? StoragePath { get; set; }
     public string? QuarantinePath { get; set; }
     public Guid? LastJobId { get; set; }
