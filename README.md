@@ -129,13 +129,14 @@ Se você ainda usa o atalho legado para abrir a API em outra janela, pode chamar
 docker compose up --build
 ```
 
-O compose local sobe API, SQL Server e Redis Stack. A API em container fica publicada em http://localhost:5000.
+O compose local sobe API, SQL Server e Redis Stack. Para compatibilidade com o frontend local atual, a API em container fica publicada em http://localhost:15214 e tambem em http://localhost:5000.
 
 Antes de usar o compose, mantenha o Ollama rodando no host local, porque o container da API aponta para `host.docker.internal:11434`.
 
 Servicos do compose:
 
-- API: `http://localhost:5000`
+- API compativel com frontend local: `http://localhost:15214`
+- API acesso direto alternativo: `http://localhost:5000`
 - SQL Server: `localhost:1433`
 - Redis Stack: `localhost:6379`
 - Redis Insight UI do stack: `http://localhost:8001`

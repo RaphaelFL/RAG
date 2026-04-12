@@ -205,4 +205,34 @@ describe('MessageCard', () => {
     expect(document.querySelector('script')).toBeNull();
     expect(document.body.innerHTML).not.toContain('<script>alert(1)</script>');
   });
+
+  it('remove hashes dos chunks exibidos no chat sem perder o identificador util', () => {
+    render(
+      <MessageCard
+        message={{
+          id: 'msg-2',
+          role: 'assistant',
+          content: 'Resposta com citacoes',
+          citations: [
+            {
+              documentId: 'c1e026d4-2bc2-4f1c-9332-a3774dff8c1f',
+              documentTitle: 'Projeto na Claro (Innolevels)',
+              chunkId: 'c1e026d42bc24f1c9332a3774dff8c1f-chunk-0004',
+              snippet: 'Trecho associado ao documento c1e026d4-2bc2-4f1c-9332-a3774dff8c1f com contexto util.',
+              location: {
+                page: 1,
+                section: 'secao-c1e026d42bc24f1c9332a3774dff8c1f'
+              },
+              score: 0.95
+            }
+          ],
+          createdAtUtc: '2026-03-31T22:00:00Z'
+        }}
+      />
+    );
+
+    expect(screen.getByText('chunk-0004')).toBeInTheDocument();
+    expect(screen.queryByText(/c1e026d42bc24f1c9332a3774dff8c1f/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Trecho associado ao documento com contexto util\./i)).toBeInTheDocument();
+  });
 });

@@ -52,6 +52,7 @@ docker compose up --build
 ```
 
 Esse caminho sobe API, SQL Server e Redis Stack. O Ollama continua no host local.
+No compose atual, a API fica disponivel em `http://localhost:15214` para compatibilidade com o frontend local e tambem em `http://localhost:5000` para acesso direto ao container.
 
 ## 5. Headers mínimos
 

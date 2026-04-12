@@ -41,7 +41,8 @@ Estado atual do workspace em modo local-first.
 
 O compose atual sobe:
 
-- API em `http://localhost:5000`
+- API compativel com frontend local em `http://localhost:15214`
+- API acesso direto alternativo em `http://localhost:5000`
 - SQL Server em `localhost:1433`
 - Redis Stack em `localhost:6379`
 - Redis Stack UI em `http://localhost:8001`

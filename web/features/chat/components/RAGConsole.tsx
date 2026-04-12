@@ -237,18 +237,21 @@ export function MessageCard({ message }: Readonly<{ message: ChatMessageModel }>
 
 function CitationCard({ citation }: Readonly<{ citation: Citation }>) {
   const pageLabel = formatCitationPageRange(citation);
+  const chunkLabel = formatCitationChunkLabel(citation.chunkId);
+  const snippet = sanitizeCitationText(citation.snippet);
+  const sectionLabel = sanitizeCitationText(citation.location?.section ?? '');
 
   return (
     <article className="citation-card">
       <header>
         <strong>{citation.documentTitle}</strong>
-        <span>{citation.chunkId}</span>
+        <span>{chunkLabel}</span>
       </header>
-      <p>{citation.snippet}</p>
+      <p>{snippet}</p>
       <footer>
         <span>score {citation.score.toFixed(2)}</span>
         {pageLabel ? <span>{pageLabel}</span> : null}
-        {citation.location?.section ? <span>secao {citation.location.section}</span> : null}
+        {sectionLabel ? <span>secao {sectionLabel}</span> : null}
       </footer>
     </article>
   );
@@ -640,6 +643,26 @@ function formatCitationPageRange(citation: Citation) {
   }
 
   return `pagina ${startPage}`;
+}
+
+function formatCitationChunkLabel(chunkId: string) {
+  const normalizedChunkId = chunkId.trim();
+  const trailingChunkMatch = normalizedChunkId.match(/(chunk[-_]\d+)$/i);
+  if (trailingChunkMatch) {
+    return trailingChunkMatch[1].replace(/_/g, '-').toLowerCase();
+  }
+
+  const sanitizedChunkId = sanitizeCitationText(normalizedChunkId);
+  return sanitizedChunkId || normalizedChunkId;
+}
+
+function sanitizeCitationText(value: string) {
+  return value
+    .replace(/\b(?:[0-9a-f]{32,}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\b/gi, ' ')
+    .replace(/[-_:]+(?=\s|$)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .trim();
 }
 
 function UploadHistoryList({

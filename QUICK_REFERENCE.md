@@ -37,6 +37,10 @@ dotnet clean
 # Build e run com Docker Compose
 docker compose up --build
 
+# API do compose acessivel em:
+# - http://localhost:15214 (compatibilidade com frontend local)
+# - http://localhost:5000 (acesso direto alternativo)
+
 # Parar containers
 docker compose down
 
@@ -163,21 +167,18 @@ tail -f logs/chatbot*.txt
 
 1. Criar controller em `src/Api/Controllers/MeuController.cs`
 2. Injetar serviço do Application
-3. Adicionar DTO em `src/Api/Contracts/Dtos.cs`
-4. Documentar em `docs/01-api-documentation.md`
+3. Adicionar request/response contract e validator no modulo correspondente em `src/Api/Contracts`
+4. Atualizar o guia mais proximo do fluxo afetado em `README.md`, `GETTING_STARTED.md`, `SUMMARY.md` ou `docs/`
 
 ### Adicionar novo serviço
 
-1. Criar interface em `src/Application/Abstractions/ServiceInterfaces.cs`
-2. Implementar em `src/Application/Services/CoreServices.cs`
-3. Registrar em `src/Api/Program.cs`:
-   ```csharp
-   builder.Services.AddScoped<IMeuServico, MeuServico>();
-   ```
+1. Criar interface e implementacao no modulo apropriado (`src/Application`, `src/Infrastructure`, `src/Retrieval`, `src/Ingestion` ou `src/Mcp`)
+2. Registrar no arquivo de DI do proprio modulo, por exemplo `src/Application/DependencyInjection.cs`
+3. Manter o `Program.cs` apenas consumindo os registradores de modulo (`AddApplication`, `AddInfrastructure`, etc.)
 
 ### Adicionar nova entidade
 
-1. Adicionar classe em `src/Domain/Entities/ChatEntities.cs`
+1. Adicionar classe ou value object no namespace apropriado dentro de `src/Domain`
 2. Não referenciar Azure/Google específicos
 
 ## 🔍 Debugging
@@ -238,14 +239,16 @@ dotnet run --project src/Api/Chatbot.Api.csproj --urls "http://localhost:5555"
 
 ### CORS - Mudar para produção
 
-`src/Api/Program.cs`:
-```csharp
-// Dev (atual)
-policy.AllowAnyOrigin()
-
-// Prod (TODO)
-policy.WithOrigins("https://seu-dominio.com")
+`src/Api/Bootstrap/ApiPresentationRegistration.cs` e `src/Api/appsettings.json`:
+```json
+"Cors": {
+  "AllowedOrigins": [
+    "https://seu-dominio.com"
+  ]
+}
 ```
+
+Em desenvolvimento, o backend ja aceita origens loopback HTTP/HTTPS. Em producao, configure `Cors:AllowedOrigins` com origens absolutas validas.
 
 ## 🚨 Troubleshooting
 
@@ -304,9 +307,10 @@ docker compose up
 | Você quer... | Vá para... |
 |-------------|-----------|
 | Executar API | `GETTING_STARTED.md` |
-| Ver endpoints | `docs/01-api-documentation.md` |
-| Entender arquitetura | `docs/02-arquitetura-implementada.md` |
-| Próximos passos | `docs/04-proximas-etapas.md` |
+| Ver visão geral operacional | `README.md` |
+| Entender arquitetura alvo | `docs/05-target-rag-platform.md` |
+| Ver plano incremental | `docs/06-incremental-refactor-plan.md` |
+| Ver fluxo do viewer documental | `docs/07-unified-document-viewer.md` |
 | Procurar arquivo | `INDEX.md` |
 | Overview visual | `SUMMARY.md` |
 | Começar aqui | `START_HERE.md` |

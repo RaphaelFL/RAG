@@ -420,12 +420,13 @@ textarea {
 
 .citations-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 12px;
   margin-top: 14px;
 }
 
 .citation-card {
+  min-width: 0;
   border-radius: 18px;
   border: 1px solid rgba(13, 148, 136, 0.14);
   background: rgba(13, 148, 136, 0.06);
@@ -436,18 +437,30 @@ textarea {
 .citation-card footer {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
 }
 
 .citation-card strong {
   font-size: 0.94rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.citation-card header span,
+.citation-card footer span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .citation-card p {
   margin: 10px 0;
   color: var(--muted);
   font-size: 0.92rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .citation-card footer {

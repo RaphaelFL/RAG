@@ -116,7 +116,8 @@ O compose sobe API, SQL Server e Redis Stack. Mantenha o Ollama rodando fora do 
 
 Portas do compose:
 
-- API: `http://localhost:5000`
+- API compativel com frontend local: `http://localhost:15214`
+- API acesso direto alternativo: `http://localhost:5000`
 - SQL Server: `localhost:1433`
 - Redis: `localhost:6379`
 - Redis Stack UI: `http://localhost:8001`
